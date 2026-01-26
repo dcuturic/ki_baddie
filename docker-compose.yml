@@ -1,0 +1,57 @@
+services:
+  ki_chat:
+    build: ./ki_chat
+    container_name: ki_chat
+    networks:
+      - appnet
+
+    environment:
+      - PYTHONUNBUFFERED=1
+
+  text_to_speech:
+    build: ./textToSpeech
+    container_name: text_to_speech
+    devices:
+      - "/dev/snd:/dev/snd" 
+    volumes:
+      - /run/user/1000/pulse:/run/user/1000/pulse
+    networks:
+      - appnet
+    environment:
+      - PYTHONUNBUFFERED=1
+      - PULSE_SERVER=unix:/run/user/1000/pulse/native
+
+  vroid_emotion:
+    build: ./VroidEmotion
+    container_name: vroid_emotion
+    networks:
+      - appnet
+    environment:
+      - PYTHONUNBUFFERED=1
+
+  vroid_poser:
+    build: ./VroidPoser
+    container_name: vroid_poser
+    networks:
+      - appnet
+    environment:
+      - PYTHONUNBUFFERED=1
+
+  main_server:
+    build: ./main_server
+    container_name: main_server
+    networks:
+      - appnet
+    ports:
+      - "5000:5000"
+    environment:
+      - PYTHONUNBUFFERED=1
+    depends_on:
+      - vroid_poser
+      - ki_chat
+      - text_to_speech
+      - vroid_emotion
+
+networks:
+  appnet:
+    driver: bridge

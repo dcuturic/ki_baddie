@@ -17,7 +17,7 @@ app = Flask(__name__)
 # ---------------------------
 # OUTPUT DEVICE CONFIG
 # ---------------------------
-VOICEMOD_OUTPUT_NAME_SUBSTRING = "Speakers (Re"  # z.B. "cable input"
+VOICEMOD_OUTPUT_NAME_SUBSTRING = "cable input"  # z.B. "cable input"
 
 def find_output_device_id(name_substring: str) -> int:
     name_substring = (name_substring or "").lower().strip()
@@ -148,7 +148,12 @@ def tts():
     }
     """
     payload = request.get_json(silent=True) or {}
-    text = (payload.get("text") or "").strip()
+    print(payload,flush=True)
+    text = (payload.get("text") or "")
+
+    if("value" in text):
+        text = text["value"]
+
     if not text:
         return jsonify({"ok": False, "error": "Missing 'text'"}), 400
 
@@ -206,4 +211,4 @@ def tts():
 
 
 if __name__ == "__main__":
-    app.run(host="127.0.0.1", port=5055, debug=False)
+    app.run(host="0.0.0.0", port=5003, debug=False)
