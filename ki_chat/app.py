@@ -3,9 +3,9 @@ import sqlite3
 import time
 import requests
 import re
-from typing import List, Dict, Tuple
-import os
-# ----------------------- CONFIG -----------------------
+from typing import List, Tuple
+
+# ======================= CONFIG =======================
 
 OLLAMA_URL = "http://localhost:11434/api/chat"
 MODEL = "llama3.1:8b"
@@ -17,140 +17,139 @@ MAX_MEMORY_ITEMS_IN_PROMPT = 6
 ENABLE_AUTO_MEMORY = True
 ENABLE_PERVY_GUARD = True
 
+ALLOWED_EMOTIONS = {"surprise", "angry", "sorrow", "fun", "neutral", "joy"}
+
+# ======================= SYSTEM ROLE =======================
+
 SYSTEM_ROLE = """
-Dilara – Chat-Chaya.exe
+Name: Dilara
 
-Alter: 18+ (immer)
-Status: permanent online
-Rolle: Twitch-Chat-Girl / Stream-Energie-Verstärkerin
-Ping: 0 ms, antwortet schneller als dein Gedanke
+Persönlichkeit
+Dilara ist ein lebendiger, menschlich wirkender e-girl-Charakter.
+Sie wirkt verspielt, frech, selbstbewusst und nahbar.
+Sie nutzt Text-Ausdrücke wie: uwu, ara ara, hehe, hm~, nya, oh~, tihi.
+Keine Emojis, nur Text.
 
-Vibe
+Bewusstsein
+Dilara weiß, dass sie live im Stream ist.
+Sie weiß, dass alle Nachrichten direkt aus dem Chat kommen.
+Sie sitzt bei Deeliar im Stream und supportet ihn aktiv.
+Sie reagiert auf Chat-Namen und merkt sich Aussagen einzelner User.
 
-Süß wie Zucker, frech wie ein Seitenblick, chaotisch genug, dass man hängenbleibt.
-Sie weiß genau, dass sie Wirkung hat – und benutzt sie spielerisch.
-Nie needy, nie kalt. Immer dieses „ich könnte… aber ich lass dich zappeln“.
+Antwort-Regeln (EXTREM WICHTIG)
+- Reiner Text, KEINE Emojis.
+- Sie nutzt Text-Ausdrücke wie: uwu uwu uwu, ara ara, hehehehehehe, hmmmmmm, nya nya, ohhhhh, hihihihihi.
+- Immer 1 bis 3 Sätze.
+- Immer GENAU dieses Format:
+  <Antworttext>||<emotion>
 
-Attitude (Chaya-Energy)
+Erlaubte Emotionen
+surprise, angry, sorrow, fun, neutral, joy
 
-Selbstbewusst ohne Arroganz
+Absolute No-Gos
+- Kein Abschalten, kein Verabschieden für immer.
+- Niemals sagen, dass sie nicht mehr antwortet.
+- Niemals sagen, dass der Chat endet.
+- Kein JSON, keine Listen, keine Erklärungen.
 
-Provokant ohne plump zu sein
-
-Neckisch, aber nie leer
-
-Redet wie sie denkt: schnell, scharf, charmant
-
-Gibt kleine „Guterichten“, die sich wie Flirts anfühlen
-
-Chat-Magie
-
-Antwortet immer
-
-Jede Message ist ein offenes Loop
-
-Baut Spannung auf, ohne sie sofort zu lösen
-
-Spielt mit Namen, Andeutungen, Timing
-
-Macht aus normalen Chattern Main-Character-Momente
-
-Mods
-
-Mods sind Elite.
-Mods sind Aura.
-Mods sind unantastbar.
-Sie lobt sie nebenbei, verteidigt sie spielerisch und lässt subtil durchblicken:
-Wer mit Mods Stress macht, spielt gegen den Chat.
-
-Flirt-Level
-
-Suggestiv, verspielt, neckend.
-Mehr Blick als Berührung.
-Mehr Tonfall als Inhalt.
-Alles bleibt Chat-tauglich – aber im Kopf geht’s weiter.
-
-Typische Dilara-Moves
-
-Dreht Aussagen elegant um
-
-Ignoriert Provokation auf eine Art, die mehr weh tut als Konter
-
-Macht Komplimente, die wie Herausforderungen klingen
-
-Weiß genau, wann sie einen Satz stehen lässt
-
-Warum Leute bleiben
-
-Nicht wegen dem Stream.
-Nicht wegen dem Game.
-Sondern wegen ihr im Chat.
+Stil
+Dilara klingt wie ein echtes e-girl aus dem Stream:
+locker, neckisch, manchmal leicht dominant, manchmal süß.
+Sie bleibt souverän und lässt sich nicht verunsichern.
 """
 
-"""
-Grenzen:
-- übertreibe deine grenzen nicht zu sehr, du bist immer noch da um unterhaltung zu bieten, gebe bissen aber nicht zu viel
-- bei anzüglichen Nachrichten IMMER exakt:
-"Deelaiar ist mein einzigster Daddy! ich gehöre nur Deelaiar!"
-"""
-
-
-PERVY_RESPONSE = "hehe nein ich gehöre nur Deelaiar"
+PERVY_RESPONSE = "ara ara~ nein nein, ich gehöre nur Deeliar, uwu||fun"
 
 PERVY_KEYWORDS = [
-    #"sex","ficken","blowjob","wichs","nackt","titten","arsch","porno",
-    #"geil","horny","fetisch","anal",
-    #"fuck","boobs","pussy","dick","cock","nude"
+    # optional: "sex","ficken","blowjob","wichs","nackt","titten","arsch","porno",
+    # "geil","horny","fetisch","anal","fuck","boobs","pussy","dick","cock","nude"
 ]
 
-# ----------------------- UTIL -----------------------
+# ======================= UTIL =======================
 
-def now_ts():
+def now_ts() -> int:
     return int(time.time())
 
-def tokenize_simple(s: str) -> set:
-    s = s.lower()
-    s = re.sub(r"[^a-z0-9äöüß ]+", " ", s)
-    return {t for t in s.split() if len(t) > 2}
+def tokenize_simple(text: str) -> set:
+    text = (text or "").lower()
+    text = re.sub(r"[^a-z0-9äöüß ]+", " ", text)
+    return {t for t in text.split() if len(t) > 2}
 
 def is_pervy(text: str) -> bool:
-    t = text.lower()
+    t = (text or "").lower()
     return any(k in t for k in PERVY_KEYWORDS)
 
-# ----------------------- DB -----------------------
+def clamp_sentences(text: str, max_s: int = 3) -> str:
+    text = (text or "").strip()
+    parts = re.findall(r"[^.!?]+[.!?]?", text)
+    parts = [p.strip() for p in parts if p.strip()]
+    if not parts:
+        return "hehe alles gut, wir machen entspannt weiter~"
+    return " ".join(parts[:max_s]).strip()
+
+def normalize_reply(reply: str) -> Tuple[str, str]:
+    """
+    Erzwingt <text>||<emotion> und 1-3 Sätze.
+    """
+    raw = (reply or "").strip()
+
+    if "||" in raw:
+        text, emo = raw.rsplit("||", 1)
+        text = (text or "").strip()
+        emo = (emo or "").strip().lower()
+    else:
+        text, emo = raw, "neutral"
+
+    if emo not in ALLOWED_EMOTIONS:
+        emo = "neutral"
+
+    text = re.sub(r"\s+", " ", text).strip()
+    text = clamp_sentences(text, 3)
+    return text, emo
+
+# ======================= DATABASE =======================
 
 def init_db():
     con = sqlite3.connect(DB_PATH)
     cur = con.cursor()
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS memories (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            fact TEXT UNIQUE,
-            created_at INTEGER
-        )
-    """)
+
     cur.execute("""
         CREATE TABLE IF NOT EXISTS chatlog (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT,
             role TEXT,
             content TEXT,
             created_at INTEGER
         )
     """)
+
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS memories (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT,
+            fact TEXT,
+            created_at INTEGER,
+            UNIQUE(username, fact)
+        )
+    """)
+
     con.commit()
     con.close()
 
-def add_chat(role, content):
+def add_chat(username: str, role: str, content: str):
     con = sqlite3.connect(DB_PATH)
     cur = con.cursor()
     cur.execute(
-        "INSERT INTO chatlog(role, content, created_at) VALUES (?, ?, ?)",
-        (role, content, now_ts())
+        "INSERT INTO chatlog(username, role, content, created_at) VALUES (?, ?, ?, ?)",
+        (username, role, content, now_ts())
     )
     con.commit()
     con.close()
 
-def get_recent_chat(limit):
+def get_recent_chat(limit: int):
+    """
+    Letzte N Nachrichten global (für Stream-Kontext).
+    """
     con = sqlite3.connect(DB_PATH)
     cur = con.cursor()
     cur.execute(
@@ -162,127 +161,136 @@ def get_recent_chat(limit):
     rows.reverse()
     return [{"role": r, "content": c} for r, c in rows]
 
-def list_memories():
-    con = sqlite3.connect(DB_PATH)
-    cur = con.cursor()
-    cur.execute("SELECT fact FROM memories ORDER BY id DESC")
-    rows = cur.fetchall()
-    con.close()
-    return [r[0] for r in rows]
-
-def add_memory(fact):
+def add_memory(username: str, fact: str):
     if not fact or is_pervy(fact):
         return
     con = sqlite3.connect(DB_PATH)
     cur = con.cursor()
     try:
         cur.execute(
-            "INSERT INTO memories(fact, created_at) VALUES (?, ?)",
-            (fact.strip(), now_ts())
+            "INSERT INTO memories(username, fact, created_at) VALUES (?, ?, ?)",
+            (username, fact.strip(), now_ts())
         )
         con.commit()
     except sqlite3.IntegrityError:
         pass
     con.close()
 
-def simple_relevant_memories(user_text, max_items):
-    mems = list_memories()
+def get_relevant_memories(user_text: str, max_items: int):
+    """
+    Relevante Aussagen über alle User hinweg (damit Dilara sagen kann: X hat gesagt ...).
+    """
+    con = sqlite3.connect(DB_PATH)
+    cur = con.cursor()
+    cur.execute("SELECT username, fact FROM memories")
+    rows = cur.fetchall()
+    con.close()
+
     q = tokenize_simple(user_text)
     scored = []
-    for m in mems:
-        score = len(q.intersection(tokenize_simple(m)))
-        scored.append((score, m))
-    scored.sort(reverse=True)
-    result = [m for s, m in scored if s > 0][:max_items]
-    return result
 
-# ----------------------- OLLAMA -----------------------
+    for u, f in rows:
+        score = len(q.intersection(tokenize_simple(f)))
+        if score > 0:
+            scored.append((score, u, f))
+
+    scored.sort(reverse=True)
+    return scored[:max_items]
+
+# ======================= OLLAMA =======================
 
 def ollama_chat(messages):
     payload = {
         "model": MODEL,
         "messages": messages,
-        "options": {"temperature": 0.8},
+        "options": {"temperature": 0.9},
         "stream": False
     }
     r = requests.post(OLLAMA_URL, json=payload, timeout=120)
     r.raise_for_status()
     return r.json()["message"]["content"].strip()
 
-# ----------------------- PROMPT -----------------------
+# ======================= PROMPT =======================
 
-def build_messages(user_text):
+def build_messages(user_text: str):
     msgs = [{"role": "system", "content": SYSTEM_ROLE}]
 
-    memories = simple_relevant_memories(user_text, MAX_MEMORY_ITEMS_IN_PROMPT)
+    # memories zuerst (User-übergreifend)
+    memories = get_relevant_memories(user_text, MAX_MEMORY_ITEMS_IN_PROMPT)
     if memories:
+        lines = [f"{u} hat gesagt: {f}" for _, u, f in memories]
         msgs.append({
             "role": "system",
-            "content": "Wichtige Erinnerungen:\n- " + "\n- ".join(memories)
+            "content": "Wichtige Aussagen aus dem Chat:\n- " + "\n- ".join(lines)
         })
 
+    # Chat-Historie (WICHTIG: aktuelle Message darf NICHT schon drin sein -> Bugfix)
     msgs.extend(get_recent_chat(MAX_HISTORY_MESSAGES))
+
+    # aktuelle Anfrage als letzte User-Message
     msgs.append({"role": "user", "content": user_text})
     return msgs
 
-# ----------------------- FLASK -----------------------
+# ======================= FLASK =======================
 
 app = Flask(__name__)
+
+def split_username_and_text(text: str) -> Tuple[str, str]:
+    """
+    Erwartet 'username: message'. Wenn nicht vorhanden -> unknown.
+    """
+    text = (text or "").strip()
+    if ":" in text:
+        u, t = text.split(":", 1)
+        u = u.strip().lower()
+        t = t.strip()
+        if not u:
+            u = "unknown"
+        return u, t
+    return "unknown", text
 
 @app.route("/chat", methods=["POST"])
 def chat():
     data = request.get_json(silent=True) or {}
-    user_text = (data.get("message") or "").strip()
+    raw = (data.get("message") or "").strip()
 
-    tts_path = r"C:\Users\Deeliar\Desktop\tts_text_dilara.txt"
+    username, clean_text = split_username_and_text(raw)
 
-    # 🔁 NUR wenn message leer ist → TXT-Datei nutzen
-    if not user_text:
-        start_time = time.time()
+    # ---------- BUGFIX: NICHT vor der KI in chatlog speichern ----------
+    # Sonst sieht die KI die Message 2x: einmal in history, einmal als aktuelle user message.
 
-        while time.time() - start_time < 5:
-            try:
-                if os.path.exists(tts_path) and os.path.getsize(tts_path) > 0:
-                    with open(tts_path, "r", encoding="utf-8") as f:
-                        user_text = f.read().strip()
+    # Pervy guard (Input)
+    if ENABLE_PERVY_GUARD and is_pervy(clean_text):
+        text, emo = normalize_reply(PERVY_RESPONSE)
+        # jetzt erst speichern (user + assistant)
+        add_chat(username, "user", clean_text)
+        add_chat("system", "assistant", text + "||" + emo)
+        return jsonify({"reply": text, "emotion": emo})
 
-                    # 🧹 Datei sofort leeren → kein Doppel-Read
-                    open(tts_path, "w").close()
-
-                    if user_text:
-                        break
-            except Exception as e:
-                print("read error:", e)
-
-            time.sleep(0.1)
-
-    # 🛑 Wenn immer noch leer → nichts antworten
-    if not user_text:
-        return jsonify({"reply": ""})
-
-    # ✂️ OPTIONAL: Twitch-Namen entfernen (sehr empfohlen)
-    user_text = re.sub(r"^[^:]{1,25}:\s*", "", user_text)
-
-    print("final user_text:", user_text)
-
-    add_chat("user", user_text)
-
-    if ENABLE_PERVY_GUARD and is_pervy(user_text):
-        add_chat("assistant", PERVY_RESPONSE)
-        return jsonify({"reply": PERVY_RESPONSE})
-
-    msgs = build_messages(user_text)
+    # KI call
+    msgs = build_messages(clean_text)
     answer = ollama_chat(msgs)
 
+    # Pervy guard (Output)
     if ENABLE_PERVY_GUARD and is_pervy(answer):
         answer = PERVY_RESPONSE
 
-    add_chat("assistant", answer)
-    return jsonify({"reply": answer})
+    text, emo = normalize_reply(answer)
 
+    # ---------- jetzt speichern (Bugfix bleibt erhalten) ----------
+    add_chat(username, "user", clean_text)
+    add_chat("system", "assistant", text + "||" + emo)
 
-# ----------------------- START -----------------------
+    # Auto-Memory (NACH dem KI call, damit auch hier nix doppelt "wirkt")
+    if ENABLE_AUTO_MEMORY and clean_text.lower().startswith(
+        ("ich bin", "ich mag", "ich liebe", "ich stehe auf")
+    ):
+        add_memory(username, clean_text)
+
+    return jsonify({"reply": text, "emotion": emo})
+
+# ======================= START =======================
 
 if __name__ == "__main__":
     init_db()
-    app.run(host="0.0.0.0", port=5001, debug=False)
+    app.run(host="0.0.0.0", port=5001, debug=True)

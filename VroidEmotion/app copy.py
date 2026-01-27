@@ -17,16 +17,14 @@ VSEE_PORT = 39539  # aus VSeeFace
 # Mapping (deine Commands -> Keys)
 # ----------------------------
 EMOTION_MAP: Dict[str, str] = {
-    "joy": "Joy",
+    "happy": "Joy",
     "angry": "Angry",   # manche Models: "Anger"
-    "sorrow": "Sorrow",
+    "sad": "Sorrow",
     "fun": "Fun",
     "neutral": "Neutral",  # oft existiert Neutral NICHT, ist okay
-    "surprise": "Surprise"  # oft existiert Neutral NICHT, ist okay
-    
 }
 
-# ---------------------------- surprise, angry, sorrow, fun, neutral,joy
+# ----------------------------
 # WICHTIG: Reset-Liste erweitern
 # Damit wirklich nix "hängen bleibt"
 # (Keys, die es nicht gibt, werden meistens ignoriert)
