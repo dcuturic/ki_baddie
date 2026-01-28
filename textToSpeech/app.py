@@ -138,7 +138,8 @@ AUDIO_LOCK = threading.Lock()
 # de-DE-KillianNeural
 VOICE = "de-DE-AmalaNeural"
 RATE = "+15%"
-PITCH = "-19Hz"
+#PITCH = "-25Hz"
+PITCH = "+20Hz"
 
 # =====================================================
 # TTS HELPERS
