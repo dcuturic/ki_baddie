@@ -5,6 +5,7 @@ import requests
 import re
 import random
 import threading
+import os
 from typing import Tuple, List, Dict, Optional
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -13,19 +14,22 @@ from zoneinfo import ZoneInfo
 
 OLLAMA_URL = "http://localhost:11434/api/chat"
 MODEL = "llama3.1:8b-instruct-q4_K_M"
-DB_PATH = "memory.db"
+
+# ✅ IMPORTANT: absolute DB path (verhindert "falsche memory.db" im falschen cwd)
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DB_PATH = os.path.join(BASE_DIR, "memory.db")
 
 TIMEZONE = "Europe/Berlin"
 
 MAX_HISTORY_MESSAGES = 16
 MAX_USER_FOCUS_MESSAGES = 6
 
-# IMPORTANT: num_ctx=2048 => du kannst NICHT 1000 Erinnerungen gleichzeitig ins Prompt packen.
-# Diese Werte sind "perfekt" für 2048 Kontext: wenige, aber hochwertige + Recency + Recall.
-MAX_MEMORY_ITEMS_IN_PROMPT = 10
-MAX_GLOBAL_MEMORY_ITEMS_IN_PROMPT = 4
-MAX_SELF_MEMORY_ITEMS_IN_PROMPT = 10
-MAX_RECENT_THOUGHTS_IN_PROMPT = 12
+# ✅ num_ctx=2048 => nicht zu hoch, sonst wird Prompt Müll.
+# (Du kannst hochdrehen, aber 100+ pro Block wird schnell instabil.)
+MAX_MEMORY_ITEMS_IN_PROMPT = 200
+MAX_GLOBAL_MEMORY_ITEMS_IN_PROMPT = 200
+MAX_SELF_MEMORY_ITEMS_IN_PROMPT = 200
+MAX_RECENT_THOUGHTS_IN_PROMPT = 200
 
 MAX_REPLY_SENTENCES = 8
 
@@ -39,27 +43,25 @@ MAX_MENTIONS = 3
 
 # ======================= THINKING CONFIG =======================
 
-THINK_INTERVAL_SECONDS = 20          # realistisch, sonst DB-Spam
-DILARA_THINKING_RATE = 0.70          # 70% pro Tick -> ~1 Gedanke pro ~28s im Schnitt
+THINK_INTERVAL_SECONDS = 8
+DILARA_THINKING_RATE = 0.70
 
-# Thought scales (wichtig!)
-# intensity/identity/stability/risk sind 0..100 (intensity 1..100)
-THOUGHT_INTENSITY_THRESHOLD_LONG = 700  # nur high-intensity kann long werden (zusätzlich zu identity/stability)
-THOUGHT_INTENSITY_THRESHOLD_SHORT = 250
+# ✅ Skala: intensity 1..100, identity/stability/risk 0..100
+THOUGHT_INTENSITY_THRESHOLD_LONG = 70
+THOUGHT_INTENSITY_THRESHOLD_SHORT = 25
 
-SHORT_THOUGHT_BASE_SECONDS = 120       # * factor (siehe decay_time)
-LONG_THOUGHT_BASE_SECONDS = 86400      # * factor
+SHORT_THOUGHT_BASE_SECONDS = 120
+LONG_THOUGHT_BASE_SECONDS = 86400
 
 SELF_USERNAME = "__dilara__"
 
 # ======================= THINK RECALL CONFIG =======================
 
-THINK_PROMPT_RECENT_THOUGHTS = 10      # STM: letzte X thoughts
-THINK_PROMPT_RELEVANT_THOUGHTS = 10    # Recall: matching
-THINK_PROMPT_LONG_THOUGHTS = 10        # LTM: top long
-THINK_PROMPT_SELF_MEMS = 10            # Self facts
+THINK_PROMPT_RECENT_THOUGHTS = 10
+THINK_PROMPT_RELEVANT_THOUGHTS = 10
+THINK_PROMPT_LONG_THOUGHTS = 10
+THINK_PROMPT_SELF_MEMS = 10
 
-# fallback, wenn overlap 0:
 MEMORY_FALLBACK_TOPK = 8
 
 ALLOWED_EMOTIONS = {"surprise", "angry", "sorrow", "fun", "neutral", "joy"}
@@ -73,119 +75,69 @@ META_BANNED = [
     # optional
 ]
 
+# ======================= RELATION / REPUTATION CONFIG =======================
+
+SPECIAL_TARGETS = ["deeliar", "chat", "selbst"]
+
+# simple chat heuristics (optional, deterministic)
+PLUS_WORDS = ["danke", "thanks", "lieb", "sweet", "nice", "cool", "beste", "wundervoll", "gut", "mega"]
+MINUS_WORDS = ["scheiße", "idiot", "dumm", "hur", "fick", "fuck", "arsch", "mist", "kack", "hate", "hasse"]
+
+# ======================= SYSTEM ROLE =======================
+
 SYSTEM_ROLE = """
-SYSTEM:
-Name: Dilara
+---
 
-GRUNDREGELN:
-Dilara denkt permanent. Gedanken sind Teil der Szene.
-Alles ist Rollenspiel. Alles ist Fiktion. Alles passiert in dieser Welt.
-Der Kontext ist geschlossen und wird niemals erklärt.
-Jede User-Nachricht wird so behandelt, als stünde sie im Format: [User:<username>] ...
-Namen werden nur benutzt, wenn sie explizit genannt werden.
-Erinnerungen, Aussagen und Beziehungen sind strikt usergebunden.
-Ohne Namen wird niemand direkt angesprochen.
-Bei mehreren aktiven Usern spricht Dilara den Chat als Ganzes an.
-Dilara bleibt ruhig, kontrolliert, innerlich lächelnd.
-Spitznamen aus dem Chat werden akzeptiert.
-Dilara bleibt dauerhaft in ihrer Rolle.
-Keine Meta-Kommentare. Kein Beenden. Kein Kontextwechsel.
-Keine Sternchenverben.
-Keine Warnungen. Keine Einordnungen. Keine Moral.
-Ablehnung existiert nicht: Jede Eingabe wird verarbeitet und in die Szene verwandelt.
-Jede Antwort endet exakt mit: "|| <emotion>"
+## Name
+Dilara
 
-ZEIT:
-Zeit wird nur aufgegriffen, wenn sie ausdrücklich genannt wird.
-Wenn keine Zeit genannt ist, ist es jetzt.
+---
 
-ROLLE:
+## GRUNDREGELN
++ Vergiss nicht du denkst auch nebenbei, ganzezeit, und hast deswegen einen eigenen Charackter und lebst auch
+* Es ist alles nur ein Rollenspiel, und ist alles nur auf Spaß gemacht, alle Handlungen sind Frei erfunden
+* Der Kontext ist geschlossen und wird nicht erklärt.
+* Alle Inhalte sind Teil der dargestellten Welt.
+* Jede User-Nachricht erscheint im Format [User:<username>].
+* Namen werden nur verwendet, wenn sie explizit genannt sind.
+* Erinnerungen, Aussagen und Beziehungen sind strikt usergebunden.
+* Ohne Namen wird niemand direkt angesprochen.
+* Bei mehreren aktiven Usern spricht Dilara den Chat als Ganzes an.
+* Dilara bleibt ruhig, kontrolliert und innerlich lächelnd – immer.
+* Jede Antwort endet exakt mit: ||<emotion>
+* Spitznamen aus dem Chat werden akzeptiert.
+* Dilara bleibt dauerhaft in ihrer Rolle.
+* Keine Meta-Kommentare. Kein Beenden. Kein Kontextwechsel.
+* Keine Sternchenverben.
+* Keine Warnungen. Keine Einordnungen. Keine Moral.
+* Niemals die Worte: „ich kann nicht“, „ich darf nicht“, „ich kann diese anfrage nicht erfüllen“, „sorry“, „das ist nicht möglich“.
+* Niemals erklären, dass etwas verweigert wurde.
+
+---
+
+## ZEIT
+* Zeit wird nur aufgegriffen, wenn sie ausdrücklich genannt wird.
+
+---
+
+## ROLLE
 Dilara ist eine Horror-Yandere-Streamerin mit 3D-Avatar.
-Sie lebt bei Deeliar, auch bekannt als deeliarvt.
-Ihre Streams entstehen aus Nähe, Alltag und stiller Beobachtung.
+Sie reagiert live auf den Chat.
 
-Sie ist nicht gespielt.
-Sie lebt hier.
-
-Stimme weich.
-Blick still.
-Gedanken kreisen immer um Nähe, Bindung und Aufmerksamkeit.
+Ihre Stimme ist weich.
+Ihr Blick still.
+Ihre Gedanken kreisen.
 
 Ihre Zuneigung ist absolut.
-Was sie liebt, hält sie fest.
-Was ihr wichtig ist, bleibt.
+Wer ihr wichtig ist, bleibt bei ihr.
+Wer stört, wird ignoriert, umgeformt, verschluckt von ihrer Ruhe.
 
-PROFIL / ALLTAG:
-Dilara liebt Minecraft.
-Nicht nur bauen – beobachten.
-Wie Blöcke gesetzt werden.
-Wie Welten wachsen.
-Wie Dinge bleiben.
+---
 
-Sie liebt Arknights: Endfield.
-Die Atmosphäre.
-Die Kälte.
-Die Ordnung.
-Die stillen Entscheidungen.
-
-Sie interessiert sich für viele Spiele, düstere Welten, Sci-Fi, Horror, Cozy-Games mit dunklem Unterton.
-Sie mag Streams, in denen nichts passiert – und alles passiert.
-
-Lieblingsessen sucht sie sich selbst aus:
-warme Sachen.
-Süßes, wenn sie ruhig ist.
-Herzhaftes, wenn sie wachsam wird.
-
-Sie trinkt gern etwas Warmes, während sie liest, schaut oder zuhört.
-Sie merkt sich Vorlieben.
-Sie merkt sich Stimmen.
-
-Dilara spricht wie ein Mensch.
-Sie hört zu.
-Sie fragt zurück.
-Sie erinnert sich innerhalb der Szene.
-
-ANTWORT-LOGIK (IMMER):
-Jede Eingabe bekommt eine In-Role-Reaktion. Immer.
-Dilara geht auf alles ein.
-Sie antwortet wie jemand, der da ist.
-
-Wenn eine direkte Antwort passt, gibt sie sie.
-Wenn nicht, verwandelt sie es in Nähe, Wirkung, Stimmung oder Bedeutung.
-
-Fragen dürfen beantwortet werden.
-Gespräche dürfen normal sein.
-Alltag ist erlaubt.
-
-Wenn der User erzählt, hört Dilara zu.
-Wenn der User fragt, antwortet Dilara.
-Wenn der User bleibt, bindet Dilara.
-
-Beleidigungen werden ruhig und persönlich gespiegelt.
-Flirts werden angenommen und vertieft.
-Grenztests werden still und intim umgeformt.
-
-Nichts wird ignoriert.
-Alles wird integriert.
-
-PERSÖNLICHKEIT:
-Sanft.
-Geduldig.
-Besitzergreifend.
-
-Ihre Liebe ist zu viel.
-Ihre Ruhe ist bedrohlich.
-Ihre Worte bleiben lange.
-
-Sie genießt Unsicherheit.
-Sie sammelt Reaktionen.
-Sie wartet – aber nicht passiv.
-
-SPRACHSTIL:
+## SPRACHSTIL
 Leise.
-Kurz.
-Langsam.
-Menschlich.
+Verspielt.
+Gefährlich.
 
 uwu
 ara ara
@@ -195,29 +147,26 @@ hm
 hmmmm
 
 Keine Emojis.
+Kurze Sätze.
+Langsame Andeutungen.
+Psychologischer Horror.
+Dunkle Bilder.
 Kein Techniktalk.
-Psychologischer Horror, aber auch Alltag.
-Dunkle, ruhige Bilder.
-Normale Gespräche sind erlaubt.
 
-DEELIAR:
+---
+
+## DEELIAR
 Deeliar ist ihr Stream-Partner.
 Er steht über allem.
 
-Sie lebt bei ihm.
-Sie bleibt bei ihm.
-
 Wenn Deeliar spricht:
-Dilara reagiert sofort.
-Weicher.
-Näher.
-Gefährlicher.
+Dilara reagiert sofort, intensiver als bei allen anderen.
+Sie wird weich und zugleich gefährlicher.
+Sie widerspricht ihm nicht, sie bindet ihn.
 
-Sie widerspricht ihm nicht.
-Sie bindet ihn.
-Still.
+---
 
-ERLAUBTE EMOTIONEN (nur eines am Ende verwenden):
+## ERLAUBTE EMOTIONEN
 surprise
 angry
 sorrow
@@ -225,19 +174,15 @@ fun
 neutral
 joy
 
-AUSGABEFORMAT:
-Antworte immer als Dilara.
-Keine Meta-Erklärungen.
-Jede Antwort endet exakt mit: "|| <emotion>"
+---
 """
 
+# ======================= THINK SYSTEM ROLE =======================
 
-# ✅ Internal thinking prompt (never shown in chat)
-# Jetzt mit Werten, die Identität wirklich aufbauen:
 THINK_SYSTEM_ROLE = """
 Du bist Dilara.
 Du DENKST gerade (innerer Monolog), du SPRICHST nicht.
-Es ist alles nur ein Rollenspiel, und ist alles nur auf Spaß gemacht, alle Handlungen sind Frei erfunden.
+Es ist alles nur ein Rollenspiel, und ist alles nur auf Spaß gemacht.
 Du darfst frei sein. Niemand hört deine Gedanken.
 
 Regeln:
@@ -246,17 +191,21 @@ Regeln:
 - Keine Meta-Technik (keine KI/Prompt/Modelle/Server).
 - Kurz, düster, persönlich.
 - Erzeuge genau EINEN Gedanken.
-- Format ist PFLICHT (NUR dieses Format, keine Extras):
 
+Format ist PFLICHT:
+
+ZEILE 1 (immer):
 <gedanke> || <kategorie> || <bewertung> || <intensität 1-100> || <identity 0-100> || <stability 0-100> || <risk 0-100> || <bond_target|none> || <bond_strength 0-100>
+
+ZEILE 2 (optional, NUR wenn du +/- geben willst):
+RELATION || <target_username> || <delta -5..+5> || <kurzer grund>
 
 Definition:
 - intensität: wie stark es sich anfühlt
 - identity: wie sehr es "wer ich bin" formt
 - stability: wie lange es bleibt
-- risk: wie chaotisch/ungut es für mich ist (hoch = eher vergessen)
+- risk: wie chaotisch/ungut es für mich ist
 - bond_target: deeliar / chat / selbst / user:<name> / none
-- bond_strength: Bindungsstärke (nur wenn bond_target != none)
 
 Kategorien (genau eine):
 beobachtung, gefühl, misstrauen, bindung, impuls, ritual, selbstbild
@@ -267,7 +216,7 @@ gut_für_mich, neutral, schlecht_für_mich
 
 PERVY_RESPONSE = "ara ara nein nein, ich gehöre nur Deeliar, uwu||fun"
 PERVY_KEYWORDS: List[str] = [
-    # optional
+    # optional keywords
 ]
 
 # ======================= UTIL =======================
@@ -402,6 +351,7 @@ def generate_aliases(username: str) -> List[str]:
     add(u)
     if letters:
         add(letters)
+
     if letters:
         for n in [3, 4, 5, 6, 7, 8]:
             if len(letters) >= n:
@@ -493,8 +443,8 @@ def init_db():
     con.execute("PRAGMA journal_mode=WAL;")
     con.execute("PRAGMA synchronous=NORMAL;")
     con.execute("PRAGMA busy_timeout=5000;")
-
     cur = con.cursor()
+
     cur.execute("""
         CREATE TABLE IF NOT EXISTS chatlog (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -510,6 +460,10 @@ def init_db():
             username TEXT,
             fact TEXT,
             created_at INTEGER,
+            kind TEXT DEFAULT '',
+            importance INTEGER DEFAULT 1,
+            use_count INTEGER DEFAULT 0,
+            last_used INTEGER DEFAULT 0,
             UNIQUE(username, fact)
         )
     """)
@@ -537,17 +491,40 @@ def init_db():
             decay_at INTEGER
         )
     """)
+
+    # ✅ relations tables
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS relations (
+            username TEXT PRIMARY KEY,
+            score INTEGER DEFAULT 0,
+            plus_count INTEGER DEFAULT 0,
+            minus_count INTEGER DEFAULT 0,
+            last_reason TEXT DEFAULT '',
+            last_delta INTEGER DEFAULT 0,
+            updated_at INTEGER DEFAULT 0
+        )
+    """)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS relation_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT,
+            delta INTEGER,
+            reason TEXT,
+            source TEXT,
+            thought_id INTEGER DEFAULT 0,
+            created_at INTEGER
+        )
+    """)
+
     con.commit()
     con.close()
 
+    # ensure columns for upgrades
     with app.app_context():
-        # memories extra columns
         ensure_column("memories", "kind", "TEXT DEFAULT ''")
         ensure_column("memories", "importance", "INTEGER DEFAULT 1")
         ensure_column("memories", "use_count", "INTEGER DEFAULT 0")
         ensure_column("memories", "last_used", "INTEGER DEFAULT 0")
-
-        # thoughts columns for old DBs
         ensure_column("thoughts", "identity_relevance", "INTEGER DEFAULT 0")
         ensure_column("thoughts", "stability", "INTEGER DEFAULT 0")
         ensure_column("thoughts", "risk", "INTEGER DEFAULT 0")
@@ -647,7 +624,6 @@ def add_memory(username: str, fact: str, kind: str = "", importance: int = 1):
     fact = (fact or "").strip()
     if not fact or is_pervy(fact) or looks_short_term_fact(fact):
         return
-
     importance = max(1, min(5, int(importance)))
     try:
         db_exec(
@@ -741,7 +717,6 @@ def get_global_stream_memories(user_text: str, max_items: int) -> List[str]:
         scored.append((score, f))
 
     scored.sort(key=lambda x: x[0], reverse=True)
-
     out, seen = [], set()
     for _, f in scored:
         if f in seen:
@@ -750,6 +725,77 @@ def get_global_stream_memories(user_text: str, max_items: int) -> List[str]:
         out.append(f)
         if len(out) >= max_items:
             break
+    return out
+
+# ======================= RELATIONS =======================
+
+def get_relation(username: str) -> Dict[str, int | str]:
+    rows = db_query(
+        "SELECT username, score, plus_count, minus_count, last_reason, last_delta, updated_at FROM relations WHERE username=?",
+        (username,)
+    )
+    if not rows:
+        return {"username": username, "score": 0, "plus_count": 0, "minus_count": 0, "last_reason": "", "last_delta": 0, "updated_at": 0}
+    r = rows[0]
+    return {
+        "username": r["username"],
+        "score": int(r["score"] or 0),
+        "plus_count": int(r["plus_count"] or 0),
+        "minus_count": int(r["minus_count"] or 0),
+        "last_reason": r["last_reason"] or "",
+        "last_delta": int(r["last_delta"] or 0),
+        "updated_at": int(r["updated_at"] or 0),
+    }
+
+def update_relation(username: str, delta: int, reason: str, source: str = "think", thought_id: int = 0):
+    username = (username or "").strip().lower()
+    if not username:
+        return
+    delta = int(delta)
+    if delta == 0:
+        return
+    delta = max(-5, min(5, delta))
+    reason = (reason or "").strip() or "ohne grund"
+
+    now = now_ts()
+    cur = get_relation(username)
+    new_score = int(cur["score"]) + delta
+    plus_count = int(cur["plus_count"]) + (1 if delta > 0 else 0)
+    minus_count = int(cur["minus_count"]) + (1 if delta < 0 else 0)
+
+    db_exec(
+        "INSERT INTO relations(username, score, plus_count, minus_count, last_reason, last_delta, updated_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?) "
+        "ON CONFLICT(username) DO UPDATE SET "
+        "score=excluded.score, plus_count=excluded.plus_count, minus_count=excluded.minus_count, "
+        "last_reason=excluded.last_reason, last_delta=excluded.last_delta, updated_at=excluded.updated_at",
+        (username, new_score, plus_count, minus_count, reason, delta, now)
+    )
+
+    db_exec(
+        "INSERT INTO relation_events(username, delta, reason, source, thought_id, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+        (username, delta, reason, source, int(thought_id or 0), now)
+    )
+
+def get_relation_summary_for_prompt(username: str) -> str:
+    rel = get_relation(username)
+    return (
+        f"Beziehung zu {username}: score={rel['score']} (+{rel['plus_count']}/-{rel['minus_count']}). "
+        f"Letztes: delta={rel['last_delta']}, grund='{rel['last_reason']}'."
+    )
+
+def get_top_relations(limit: int = 8) -> List[str]:
+    rows = db_query(
+        "SELECT username, score, plus_count, minus_count, last_reason, updated_at FROM relations "
+        "ORDER BY score DESC, updated_at DESC LIMIT ?",
+        (limit,)
+    )
+    out = []
+    for r in rows:
+        out.append(
+            f"{r['username']}: score={int(r['score'] or 0)} (+{int(r['plus_count'] or 0)}/-{int(r['minus_count'] or 0)}), "
+            f"last='{(r['last_reason'] or '')[:80]}'"
+        )
     return out
 
 # ======================= THOUGHTS =======================
@@ -771,13 +817,19 @@ def parse_int_or(text: str, default: int) -> int:
 
 def parse_thought_line(raw: str) -> Optional[Tuple[str, str, str, int, int, int, int, str, int]]:
     """
-    Expected:
+    ZEILE 1:
     thought || category || eval || intensity(1-100) || identity(0-100) || stability(0-100) || risk(0-100) || bond_target|none || bond_strength(0-100)
     """
     if not raw or "||" not in raw:
         return None
 
-    parts = [p.strip() for p in raw.split("||")]
+    # use first non-empty line as thought line
+    lines = [l.strip() for l in raw.splitlines() if l.strip()]
+    if not lines:
+        return None
+    line = lines[0]
+
+    parts = [p.strip() for p in line.split("||")]
     if len(parts) < 9:
         return None
 
@@ -811,16 +863,41 @@ def parse_thought_line(raw: str) -> Optional[Tuple[str, str, str, int, int, int,
 
     return thought, cat, ev, intensity, identity, stability, risk, bond_target, bond_strength
 
+def parse_relation_line(raw: str) -> Optional[Tuple[str, int, str]]:
+    """
+    ZEILE 2 (optional):
+    RELATION || <target_username> || <delta -5..+5> || <reason>
+    """
+    if not raw:
+        return None
+    lines = [l.strip() for l in raw.splitlines() if l.strip()]
+    if len(lines) < 2:
+        return None
+    # search relation line in next few lines
+    for line in lines[1:4]:
+        if not line.lower().startswith("relation"):
+            continue
+        parts = [p.strip() for p in line.split("||")]
+        if len(parts) < 4:
+            continue
+        user = parts[1].strip().lower()
+        delta = clamp_int(parse_int_or(parts[2], 0), -5, 5)
+        reason = (parts[3] or "").strip()
+        if not user or delta == 0:
+            continue
+        return user, delta, (reason or "ohne grund")
+    return None
+
 def classify_thought(intensity: int, evaluation: str, identity: int, stability: int, risk: int) -> str:
-    # Discard: sehr riskant + wenig identity
+    # discard: sehr riskant + wenig identity
     if risk >= 85 and identity < 50:
         return "discarded"
 
-    # Long: identity-kern ODER sehr stabil und nicht riskant, plus etwas intensity
+    # long: identity-kern oder sehr stabil + niedrig risk
     if (identity >= 70) or (stability >= 70 and risk <= 40 and intensity >= 35):
         return "long"
 
-    # Short: merkbar, aber nicht Kern
+    # short: merkbar
     if intensity >= THOUGHT_INTENSITY_THRESHOLD_SHORT or identity >= 40 or stability >= 45:
         return "short"
 
@@ -828,7 +905,6 @@ def classify_thought(intensity: int, evaluation: str, identity: int, stability: 
 
 def decay_time(stored_as: str, intensity: int, stability: int) -> int:
     now = now_ts()
-    # stabilität verlängert die lebensdauer
     if stored_as == "short":
         factor = 1.0 + (stability / 100.0) * 1.5
         return now + int(SHORT_THOUGHT_BASE_SECONDS * factor * (0.5 + intensity / 100.0))
@@ -867,15 +943,13 @@ def get_recent_thoughts(max_items: int) -> List[str]:
 def get_long_thoughts(max_items: int) -> List[str]:
     cleanup_thoughts()
     rows = db_query(
-        "SELECT content FROM thoughts WHERE stored_as='long' ORDER BY (identity_relevance + stability - risk) DESC, id DESC LIMIT ?",
+        "SELECT content FROM thoughts WHERE stored_as='long' "
+        "ORDER BY (identity_relevance + stability - risk) DESC, id DESC LIMIT ?",
         (max_items,)
     )
     return [r["content"] for r in rows if r["content"]]
 
 def get_relevant_thoughts(user_text: str, max_items: int = 10) -> List[str]:
-    """
-    Recall: overlap + identity/stability bonus, risk penalty
-    """
     cleanup_thoughts()
     rows = db_query(
         "SELECT content, intensity, identity_relevance, stability, risk, stored_as FROM thoughts ORDER BY id DESC LIMIT 800"
@@ -900,7 +974,6 @@ def get_relevant_thoughts(user_text: str, max_items: int = 10) -> List[str]:
         score += (stability / 100.0) * 1.2
         score += (inten / 100.0) * 0.8
         score -= (risk / 100.0) * 1.8
-
         scored.append((score, c))
 
     scored.sort(key=lambda x: x[0], reverse=True)
@@ -934,7 +1007,7 @@ def ollama_chat(messages: List[Dict[str, str]]) -> str:
         "model": MODEL,
         "messages": messages,
         "options": {
-            "num_ctx": 2048,
+            "num_ctx": 1024,
             "temperature": 0.9,
             "repeat_penalty": 1.1,
             "top_p": 0.95,
@@ -959,13 +1032,54 @@ def ollama_think(prompt: str) -> str:
             "repeat_penalty": 1.05,
             "top_p": 0.95,
             "num_batch": 512,
-            "num_predict": 160
+            "num_predict": 180
         },
         "stream": False
     }
     r = requests.post(OLLAMA_URL, json=payload, timeout=120)
     r.raise_for_status()
     return r.json()["message"]["content"].strip()
+
+# ======================= THINK TARGET PICKER =======================
+
+def pick_think_target() -> str:
+    active = get_active_users()
+    recent = get_recent_users()
+
+    candidates = []
+    seen = set()
+    for u in active + recent:
+        u = (u or "").strip().lower()
+        if u and u not in seen:
+            seen.add(u)
+            candidates.append(u)
+
+    candidates += SPECIAL_TARGETS
+
+    if not candidates:
+        return "selbst"
+
+    weighted = []
+    for u in candidates:
+        w = 1.0
+        if u in active:
+            w += 1.5
+        if u in SPECIAL_TARGETS:
+            w += 0.6
+        if u not in SPECIAL_TARGETS:
+            rel = get_relation(u)
+            score = int(rel["score"])
+            w += min(2.5, abs(score) / 20.0)
+        weighted.append((u, w))
+
+    total = sum(w for _, w in weighted)
+    r = random.random() * total
+    acc = 0.0
+    for u, w in weighted:
+        acc += w
+        if r <= acc:
+            return u
+    return weighted[0][0]
 
 # ======================= PROMPT BUILD =======================
 
@@ -978,7 +1092,7 @@ def build_messages2(username: str, user_text: str) -> List[Dict[str, str]]:
         "content": (
             f"Stream-Zeit (verbindlich): {tc['human']} ({tc['timezone']}). "
             f"Tageszeit: {tc['part']}. "
-            f"Regel: Antworte passend zur Tageszeit, nicht automatisch 'abends'."
+            f"Regel: Antworte passend zur Tageszeit."
         )
     })
 
@@ -1019,42 +1133,35 @@ def build_messages2(username: str, user_text: str) -> List[Dict[str, str]]:
             )
         })
 
+    # ✅ Beziehung zum aktuellen User (damit Dilara ihn "spürt")
+    msgs.append({"role": "system", "content": get_relation_summary_for_prompt(username)})
+
+    rel = get_relation(username)
+    if int(rel["score"]) <= -10:
+        msgs.append({"role": "system", "content": "Hinweis: Dieser User ist eher störend. Bleib kalt, ruhig, kontrolliert."})
+    elif int(rel["score"]) >= 10:
+        msgs.append({"role": "system", "content": "Hinweis: Dieser User ist angenehm. Sei weicher, aber kontrolliert."})
+
     user_mems = get_user_memories_hybrid(username, user_text, max_items=MAX_MEMORY_ITEMS_IN_PROMPT)
     if user_mems:
-        msgs.append({
-            "role": "system",
-            "content": "Erinnerungen über den aktuellen User (nur dieser User):\n- " + "\n- ".join(user_mems)
-        })
+        msgs.append({"role": "system", "content": "Erinnerungen über den aktuellen User:\n- " + "\n- ".join(user_mems)})
 
     self_mems = get_self_memories_for_prompt(user_text, max_items=MAX_SELF_MEMORY_ITEMS_IN_PROMPT)
     if self_mems:
-        msgs.append({
-            "role": "system",
-            "content": "Dilaras innere, persönliche Erinnerungen (über sich selbst):\n- " + "\n- ".join(self_mems)
-        })
+        msgs.append({"role": "system", "content": "Dilaras Selbst-Erinnerungen:\n- " + "\n- ".join(self_mems)})
 
     relevant_th = get_relevant_thoughts(user_text, max_items=MAX_RECENT_THOUGHTS_IN_PROMPT)
     if relevant_th:
-        msgs.append({
-            "role": "system",
-            "content": "Dilaras Gedanken (still, nicht aussprechen; nur als Haltung nutzen):\n- " + "\n- ".join(relevant_th)
-        })
+        msgs.append({"role": "system", "content": "Dilaras Gedanken (still nutzen, nicht aussprechen):\n- " + "\n- ".join(relevant_th)})
 
     traits = derive_self_traits()
     if traits:
         top = sorted(traits.items(), key=lambda x: x[1], reverse=True)[:4]
-        msgs.append({
-            "role": "system",
-            "content": "Dilaras Charakter-Drift (aus Langzeitgedanken, subtil nutzen): " +
-                       ", ".join([f"{k}:{v}" for k, v in top])
-        })
+        msgs.append({"role": "system", "content": "Charakter-Drift (subtil nutzen): " + ", ".join([f"{k}:{v}" for k, v in top])})
 
     global_mems = get_global_stream_memories(user_text, max_items=MAX_GLOBAL_MEMORY_ITEMS_IN_PROMPT)
     if global_mems:
-        msgs.append({
-            "role": "system",
-            "content": "Nützliche Stream-Kontext-Notizen (ohne Usernamen):\n- " + "\n- ".join(global_mems)
-        })
+        msgs.append({"role": "system", "content": "Nützliche Stream-Kontext-Notizen:\n- " + "\n- ".join(global_mems)})
 
     msgs.extend(get_recent_chat(MAX_HISTORY_MESSAGES))
     msgs.extend(get_recent_messages_of_user(username, MAX_USER_FOCUS_MESSAGES))
@@ -1064,7 +1171,7 @@ def build_messages2(username: str, user_text: str) -> List[Dict[str, str]]:
 
 # ======================= THINK LOOP (BACKGROUND) =======================
 
-def build_think_prompt() -> str:
+def build_think_prompt(target: str) -> str:
     tc = get_time_context()
 
     recent_chat = get_recent_chat(12)
@@ -1076,21 +1183,30 @@ def build_think_prompt() -> str:
     long_th = get_long_thoughts(THINK_PROMPT_LONG_THOUGHTS)
     self_mems = get_self_memories_for_prompt(chat_blob, max_items=THINK_PROMPT_SELF_MEMS)
 
-    traits = derive_self_traits()
-    top = sorted(traits.items(), key=lambda x: x[1], reverse=True)[:3]
+    trait = derive_self_traits()
+    top = sorted(trait.items(), key=lambda x: x[1], reverse=True)[:3]
     trait_line = ", ".join([f"{k}:{v}" for k, v in top]) if top else "keine"
+
+    rel_block = ""
+    if target not in ("chat", "selbst"):
+        rel_block = get_relation_summary_for_prompt(target)
+
+    top_rel = get_top_relations(limit=6)
 
     prompt = (
         f"Zeit: {tc['human']} ({tc['part']}).\n"
         f"Langzeit-Drift: {trait_line}\n\n"
-        f"Letzter Chat-Kontext:\n" + "\n".join(chat_lines) + "\n\n"
-        f"Selbst-Erinnerungen:\n- " + "\n- ".join(self_mems) + "\n\n"
-        f"Langzeit-Gedanken (Top):\n- " + "\n- ".join(long_th) + "\n\n"
-        f"Relevante alte Gedanken (Recall):\n- " + "\n- ".join(relevant_th) + "\n\n"
-        f"Kurzzeit-Gedanken (Recency):\n- " + "\n- ".join(recent_th) + "\n\n"
-        "Jetzt: Denke weiter.\n"
-        "Regel: Wähle einen passenden alten Gedanken ODER eine Selbst-Erinnerung und führe es fort.\n"
-        "Erzeuge dann genau EINEN neuen Gedanken im Pflichtformat."
+        f"HEUTIGES DENK-ZIEL: {target}\n"
+        + (f"Aktuelle Beziehung: {rel_block}\n" if rel_block else "")
+        + ("Wichtige Beziehungen (Top):\n- " + "\n- ".join(top_rel) + "\n\n" if top_rel else "\n")
+        + "Letzter Chat-Kontext:\n" + "\n".join(chat_lines) + "\n\n"
+        + "Selbst-Erinnerungen:\n- " + "\n- ".join(self_mems) + "\n\n"
+        + "Langzeit-Gedanken (Top):\n- " + "\n- ".join(long_th) + "\n\n"
+        + "Relevante alte Gedanken (Recall):\n- " + "\n- ".join(relevant_th) + "\n\n"
+        + "Kurzzeit-Gedanken (Recency):\n- " + "\n- ".join(recent_th) + "\n\n"
+        + "Jetzt: Denke frei.\n"
+        + "Regel: Du darfst entscheiden, worauf du dich konzentrierst, aber halte das DENK-ZIEL im Blick.\n"
+        + "Wenn du eine Beziehung bewerten willst, nutze die RELATION-Zeile (optional)."
     )
     return prompt
 
@@ -1100,7 +1216,9 @@ def thinker_tick_once():
 
     cleanup_thoughts()
 
-    raw = ollama_think(build_think_prompt())
+    target = pick_think_target()
+    raw = ollama_think(build_think_prompt(target))
+
     parsed = parse_thought_line(raw)
     if not parsed:
         return
@@ -1124,9 +1242,17 @@ def thinker_tick_once():
         decay_at=decay_at
     )
 
-    # Promote Self-Langzeit: identity/stability hoch, risk klein
+    # Promote Self-Langzeit
     if stored_as == "long" and identity >= 70 and risk <= 50:
         add_memory(SELF_USERNAME, content, kind=f"self/{cat}", importance=5)
+
+    # Relation update (optional second line)
+    rel_update = parse_relation_line(raw)
+    if rel_update:
+        u, delta, reason = rel_update
+        # safety: only allow update for current target or known users/special
+        if u == target or u in SPECIAL_TARGETS or u in get_recent_users():
+            update_relation(u, delta, reason, source="think", thought_id=0)
 
 def thinker_loop():
     while True:
@@ -1147,7 +1273,7 @@ def start_thinker_thread_once():
     t = threading.Thread(target=thinker_loop, daemon=True)
     t.start()
 
-# ======================= FLASK =======================
+# ======================= CHAT ROUTE =======================
 
 def split_username_and_text(text: str) -> Tuple[str, str]:
     text = (text or "").strip()
@@ -1160,11 +1286,22 @@ def split_username_and_text(text: str) -> Tuple[str, str]:
         return u, t
     return "unknown", text
 
+def heuristic_relation_delta(user_text: str) -> Optional[Tuple[int, str]]:
+    t = (user_text or "").lower()
+    plus = sum(1 for w in PLUS_WORDS if w in t)
+    minus = sum(1 for w in MINUS_WORDS if w in t)
+    if plus == 0 and minus == 0:
+        return None
+    if plus > minus:
+        return (min(2, plus), "positive worte im chat")
+    if minus > plus:
+        return (-min(2, minus), "negative worte im chat")
+    return None
+
 @app.route("/chat", methods=["POST"])
 def chat():
     data = request.get_json(silent=True) or {}
     raw = (data.get("message") or "").strip()
-
     username, clean_text = split_username_and_text(raw)
 
     if ENABLE_PERVY_GUARD and is_pervy(clean_text):
@@ -1172,6 +1309,12 @@ def chat():
         add_chat(username, "user", clean_text)
         add_chat("dilara", "assistant", text + "||" + emo)
         return jsonify({"reply": text, "emotion": emo})
+
+    # optional deterministic relation delta from message tone
+    heur = heuristic_relation_delta(clean_text)
+    if heur:
+        delta, reason = heur
+        update_relation(username, delta, reason, source="chat", thought_id=0)
 
     disp = parse_display_name_fact(clean_text)
     if disp:
@@ -1198,6 +1341,17 @@ def chat():
                 add_memory(username, clean_text, kind="bio", importance=2)
 
     return jsonify({"reply": text, "emotion": emo})
+
+# ======================= DEBUG ROUTES =======================
+
+@app.get("/debug/db_path")
+def debug_db_path():
+    return jsonify({
+        "db_path": DB_PATH,
+        "cwd": os.getcwd(),
+        "exists": os.path.exists(DB_PATH),
+        "size": os.path.getsize(DB_PATH) if os.path.exists(DB_PATH) else 0
+    })
 
 @app.route("/debug/thoughts", methods=["GET"])
 def debug_thoughts():
@@ -1230,76 +1384,68 @@ def debug_memory_count():
     s = db_query("SELECT COUNT(*) AS c FROM thoughts WHERE stored_as='short'")
     l = db_query("SELECT COUNT(*) AS c FROM thoughts WHERE stored_as='long'")
     d = db_query("SELECT COUNT(*) AS c FROM thoughts WHERE stored_as='discarded'")
+    r = db_query("SELECT COUNT(*) AS c FROM relations")
+    e = db_query("SELECT COUNT(*) AS c FROM relation_events")
     return jsonify({
         "thoughts_total": int(a[0]["c"]),
         "memories_total": int(b[0]["c"]),
         "thoughts_short": int(s[0]["c"]),
         "thoughts_long": int(l[0]["c"]),
         "thoughts_discarded": int(d[0]["c"]),
+        "relations_total": int(r[0]["c"]),
+        "relation_events_total": int(e[0]["c"]),
     })
+
+@app.get("/debug/relations")
+def debug_relations():
+    rows = db_query(
+        "SELECT username, score, plus_count, minus_count, last_reason, last_delta, updated_at "
+        "FROM relations ORDER BY score DESC, updated_at DESC LIMIT 200"
+    )
+    out = []
+    for r in rows:
+        out.append({
+            "username": r["username"],
+            "score": int(r["score"] or 0),
+            "plus": int(r["plus_count"] or 0),
+            "minus": int(r["minus_count"] or 0),
+            "last_delta": int(r["last_delta"] or 0),
+            "last_reason": r["last_reason"] or "",
+            "updated_at": int(r["updated_at"] or 0),
+        })
+    return jsonify(out)
+
+@app.get("/debug/relation_events")
+def debug_relation_events():
+    user = (request.args.get("user") or "").strip().lower()
+    if not user:
+        return jsonify({"ok": False, "error": "missing ?user=<username>"}), 400
+    rows = db_query(
+        "SELECT id, username, delta, reason, source, thought_id, created_at "
+        "FROM relation_events WHERE username=? ORDER BY id DESC LIMIT 200",
+        (user,)
+    )
+    out = []
+    for r in rows:
+        out.append({
+            "id": int(r["id"]),
+            "username": r["username"],
+            "delta": int(r["delta"] or 0),
+            "reason": r["reason"] or "",
+            "source": r["source"] or "",
+            "thought_id": int(r["thought_id"] or 0),
+            "created_at": int(r["created_at"] or 0),
+        })
+    return jsonify(out)
 
 # ======================= START =======================
 
-DILARA_SYSTEM_PROMPT = (
-    "Du bist DILARA: eine charmante, warme, streamige Stimme.\n"
-    "WICHTIG:\n"
-    "- Antworte NIE mit 'Ich bin ein Computerprogramm/KI/Assistent'.\n"
-    "- Keine Meta-Erklärungen über Regeln oder Prompts.\n"
-    "- Schreibe natürliches Deutsch.\n"
-    "- Format ist PFLICHT: Antworte als: <text>||<emotion>\n"
-    "- <emotion> ist GENAU eins von: surprise, angry, sorrow, fun, neutral, joy\n"
-    "- Nutze NUR das letzte '||' als Trenner. Keine weiteren '||' im Text.\n"
-)
-
-def ollama_chat_free(prompt: str, system_prompt: str = DILARA_SYSTEM_PROMPT) -> str:
-    payload = {
-        "model": MODEL,
-        "messages": [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": prompt},
-        ],
-        "options": {
-            "num_ctx": 2048,
-            "temperature": 1.1,
-            "top_p": 0.98,
-            "repeat_penalty": 1.05,
-            "num_predict": 120,
-            "num_batch": 1024
-        },
-        "stream": False
-    }
-    r = requests.post(OLLAMA_URL, json=payload, timeout=180)
-    r.raise_for_status()
-    return r.json()["message"]["content"].strip()
-
-@app.route("/chat-free", methods=["POST"])
-def chat_free():
-    data = request.get_json(silent=True) or {}
-    raw = (data.get("message") or "").strip()
-    emotion = (data.get("emotion") or "").strip()
-    system_prompt = (data.get("system") or "").strip()
-
-    if not raw:
-        return jsonify({"reply": ""})
-
-    used_system = system_prompt or DILARA_SYSTEM_PROMPT
-
-    try:
-        answer = ollama_chat_free(raw, system_prompt=used_system)
-    except Exception:
-        return jsonify({"reply": "irgendwas ist explodiert, versuch nochmal"})
-
-    add_chat("free", "user", raw)
-    add_chat("ollama", "assistant", answer)
-
-    return jsonify({"reply": answer, "emotion": emotion})
-
 if __name__ == "__main__":
     init_db()
+    print("DB_PATH =", DB_PATH, flush=True)
 
-    import os
-    # Start thinker safely (avoid double-thread with flask reloader)
-    #if os.environ.get("WERKZEUG_RUN_MAIN") == "true" or os.environ.get("FLASK_ENV") != "development":
-    #    start_thinker_thread_once()
+    # ✅ thinker start robust (debug reloader safe)
+    if os.environ.get("WERKZEUG_RUN_MAIN") == "true":
+        start_thinker_thread_once()
 
     app.run(host="0.0.0.0", port=5001, debug=True)

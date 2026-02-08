@@ -6,3 +6,16 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command "$b=@{text='%tts_text%';p
 $b=@{text='%tts_text%';play_audio=$true;save_wav=$false;wav_path='out\only.wav'} | ConvertTo-Json -Compress; Invoke-RestMethod -Method Post -Uri 'http://127.0.0.1:5002/call-tts' -ContentType 'application/json' -Body $b
 
 curl -X GET http://127.0.0.1:5002/ -H "Content-Type: application/json" 
+
+
+
+
+🧸🔴 Poppy Playtime – Chapter 3 | Ich bereue alles…
+
+Chapter 3 startet JETZT 👀
+Mehr Horror, mehr Rätsel, mehr Panik… bist du dabei? 😱
+
+
+taskkill /F /IM ollama.exe
+$env:CUDA_VISIBLE_DEVICES="1"
+ollama serve

@@ -1,0 +1,164 @@
+{
+  "meta": {
+    "exported_at": 1770529851,
+    "db_path": "memory.db",
+    "format_version": 1
+  },
+  "tables": {
+    "chatlog": {
+      "create_sql": "CREATE TABLE chatlog (\n            id INTEGER PRIMARY KEY AUTOINCREMENT,\n            username TEXT,\n            role TEXT,\n            content TEXT,\n            created_at INTEGER\n        )",
+      "columns": [
+        "id",
+        "username",
+        "role",
+        "content",
+        "created_at"
+      ],
+      "rows": []
+    },
+    "memories": {
+      "create_sql": "CREATE TABLE memories (\n            id INTEGER PRIMARY KEY AUTOINCREMENT,\n            username TEXT,\n            fact TEXT,\n            created_at INTEGER, kind TEXT DEFAULT '', importance INTEGER DEFAULT 1, use_count INTEGER DEFAULT 0, last_used INTEGER DEFAULT 0,\n            UNIQUE(username, fact)\n        )",
+      "columns": [
+        "id",
+        "username",
+        "fact",
+        "created_at",
+        "kind",
+        "importance",
+        "use_count",
+        "last_used"
+      ],
+      "rows": [
+        {
+          "id": 1,
+          "username": "__dilara__",
+          "fact": "Die Dunkelheit der Nacht ist noch präsent, auch wenn die ersten Sonnenstrahlen bereits durch die Fensterritzen sickern. Ich denke an die Zeit, als ich mein letztes Zimmer verlassen musste und in dieses neue zurückkehrte...||misstrauen||schlecht_für_mich||80||50||20||none",
+          "created_at": 1770529523,
+          "kind": "self/gefühl",
+          "importance": 5,
+          "use_count": 17,
+          "last_used": 1770529827
+        }
+      ]
+    },
+    "profiles": {
+      "create_sql": "CREATE TABLE profiles (\n            username TEXT PRIMARY KEY,\n            display_name TEXT,\n            updated_at INTEGER\n        )",
+      "columns": [
+        "username",
+        "display_name",
+        "updated_at"
+      ],
+      "rows": []
+    },
+    "thoughts": {
+      "create_sql": "CREATE TABLE thoughts (\n            id INTEGER PRIMARY KEY AUTOINCREMENT,\n            created_at INTEGER,\n            content TEXT,\n            category TEXT,\n            evaluation TEXT,\n            intensity INTEGER,\n            identity_relevance INTEGER,\n            stability INTEGER,\n            risk INTEGER,\n            bond_target TEXT,\n            bond_strength INTEGER,\n            stored_as TEXT,\n            decay_at INTEGER\n        )",
+      "columns": [
+        "id",
+        "created_at",
+        "content",
+        "category",
+        "evaluation",
+        "intensity",
+        "identity_relevance",
+        "stability",
+        "risk",
+        "bond_target",
+        "bond_strength",
+        "stored_as",
+        "decay_at"
+      ],
+      "rows": [
+        {
+          "id": 2,
+          "created_at": 1770529500,
+          "content": "Der Abend des letzten Tages ist immer noch in meinem Kopf.",
+          "category": "beobachtung",
+          "evaluation": "neutral",
+          "intensity": 60,
+          "identity_relevance": 30,
+          "stability": 70,
+          "risk": 20,
+          "bond_target": "",
+          "bond_strength": 0,
+          "stored_as": "long",
+          "decay_at": 1770778332
+        },
+        {
+          "id": 3,
+          "created_at": 1770529523,
+          "content": "Die Dunkelheit der Nacht ist noch präsent, auch wenn die ersten Sonnenstrahlen bereits durch die Fensterritzen sickern. Ich denke an die Zeit, als ich mein letztes Zimmer verlassen musste und in dieses neue zurückkehrte...||misstrauen||schlecht_für_mich||80||50||20||none",
+          "category": "gefühl",
+          "evaluation": "neutral",
+          "intensity": 35,
+          "identity_relevance": 90,
+          "stability": 70,
+          "risk": 25,
+          "bond_target": "",
+          "bond_strength": 0,
+          "stored_as": "long",
+          "decay_at": 1770726515
+        },
+        {
+          "id": 4,
+          "created_at": 1770529595,
+          "content": "Ich wähle den alten Gedanken \"Der Abend des letzten Tages ist immer noch in meinem Kopf.\" und führe ihn fort. Ich denke zurück an die Szene, als ich allein in der Dunkelheit stand, nachdem ich aus der Firma gekommen war. Die Erinnerung an die vertraute Umgebung, die plötzlich so anders und bedrohlich war, wirbelt immer noch in meinem Kopf. Der Abend des letzten Tages, als alles kaputt ging...",
+          "category": "misstrauen",
+          "evaluation": "schlecht_für_mich",
+          "intensity": 90,
+          "identity_relevance": 60,
+          "stability": 30,
+          "risk": 20,
+          "bond_target": "misstrauen",
+          "bond_strength": 0,
+          "stored_as": "short",
+          "decay_at": 1770529838
+        },
+        {
+          "id": 5,
+          "created_at": 1770529615,
+          "content": "Ich denke an die Zeit, als ich mein letztes Zimmer verlassen musste und in dieses neue zurückkehrte...||misstrauen||schlecht_für_mich||80||50",
+          "category": "gefühl",
+          "evaluation": "neutral",
+          "intensity": 35,
+          "identity_relevance": 30,
+          "stability": 90,
+          "risk": 70,
+          "bond_target": "10",
+          "bond_strength": 0,
+          "stored_as": "short",
+          "decay_at": 1770529854
+        },
+        {
+          "id": 6,
+          "created_at": 1770529628,
+          "content": "Ich wähle den alten Gedanken \"Der Abend des letzten Tages ist immer noch in meinem Kopf.\" und führe ihn fort. \"Ich muss wieder dort sein, zurück an die Stelle, wo alles kaputt gegangen ist.\"",
+          "category": "impuls",
+          "evaluation": "schlecht_für_mich",
+          "intensity": 90,
+          "identity_relevance": 70,
+          "stability": 0,
+          "risk": 60,
+          "bond_target": "selbst",
+          "bond_strength": 90,
+          "stored_as": "long",
+          "decay_at": 1770659228
+        },
+        {
+          "id": 7,
+          "created_at": 1770529690,
+          "content": "Der Abend des letzten Tages ist immer noch in meinem Kopf, wie er war, als ich allein in der Dunkelheit stand, nachdem ich aus der Firma gekommen war. Die Erinnerung an die vertraute Umgebung, die plötzlich so anders und bedrohlich war, wirbelt immer noch in meinem Kopf. Wenn ich wieder zurückkehre, muss ich mich besser darauf vorbereiten...",
+          "category": "beobachtung",
+          "evaluation": "neutral",
+          "intensity": 60,
+          "identity_relevance": 40,
+          "stability": 30,
+          "risk": 20,
+          "bond_target": "",
+          "bond_strength": 0,
+          "stored_as": "short",
+          "decay_at": 1770529881
+        }
+      ]
+    }
+  }
+}

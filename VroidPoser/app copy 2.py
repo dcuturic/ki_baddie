@@ -739,7 +739,7 @@ def parse_pose_file(path: str):
 def play_pose_file(path: str):
     kind, speed, new_dest, targets = parse_pose_file(path)
 
-    step = max(0.001, float(speed) / 100.0)
+    step = max(10.001, float(speed) / 100.0)
     x = 0.0
 
     if kind == "json":

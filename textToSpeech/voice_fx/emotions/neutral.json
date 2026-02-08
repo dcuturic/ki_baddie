@@ -1,0 +1,26 @@
+{
+  "pitch_semitones": 0.0,
+  "time_stretch": 1.0,
+  "lowcut_hz": 0.0,
+  "highcut_hz": 0.0,
+  "normalize_lufs": 0.0,
+  "compressor": {
+    "enabled": true,
+    "threshold_db": 0.0,
+    "ratio": 0.0,
+    "attack_ms": 0.0,
+    "release_ms": 0.0,
+    "makeup_db": 0.0
+  },
+  "limiter": {
+    "enabled": true,
+    "ceiling_db": 0.0
+  },
+  "eq": [
+    [
+      3200.0,
+      0.6,
+      1.0
+    ]
+  ]
+}

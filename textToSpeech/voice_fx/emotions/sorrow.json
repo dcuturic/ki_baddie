@@ -1,0 +1,15 @@
+{
+        "pitch_semitones": 1.0,
+        "time_stretch": 1.0,
+        "lowcut_hz": 125.0,
+        "highcut_hz": 13500.0,
+        "eq": [
+            [120.0, -3.5, 1.0],
+            [220.0, -2.0, 1.0],
+            [420.0, -2.8, 1.0],
+            [1800.0, -0.7, 1.0],
+            [4500.0, 1.0, 1.0]
+        ],
+        "compressor": {"enabled": true, "threshold_db": -20.0, "ratio": 2.3, "attack_ms": 9.0, "release_ms": 160.0, "makeup_db": 1.5},
+        "normalize_lufs": -17.0
+    }

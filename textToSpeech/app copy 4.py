@@ -5,10 +5,8 @@ import wave
 import threading
 import time
 import subprocess
-import random
 from datetime import datetime
 from dataclasses import dataclass
-import re
 
 import requests
 import numpy as np
@@ -16,14 +14,17 @@ import sounddevice as sd
 from flask import Flask, request, jsonify, Response
 from pythonosc.udp_client import SimpleUDPClient
 
+# =========================
+# CONFIG
+# =========================
 GPU_INDEX = 0
 
 VOICE_FX_ENABLED = True
 GLOBAL_FX_ENABLED = True
 EMOTION_FX_ENABLED = False
 
-END_PAD_MS = 320
-END_FADE_MS = 45
+END_PAD_MS = 280
+END_FADE_MS = 25
 
 OSC_HOST = "127.0.0.1"
 OSC_PORT = 39539
@@ -41,6 +42,9 @@ DEFAULT_EMOTION = "neutral"
 
 FX_DIR = "voice_fx"
 
+# =========================
+# TORCH COMPAT
+# =========================
 import torch
 
 _torch_load = torch.load
@@ -53,6 +57,9 @@ def torch_load_compat(*args, **kwargs):
 
 torch.load = torch_load_compat
 
+# =========================
+# AUDIO LOAD COMPAT (torchaudio -> soundfile)
+# =========================
 import soundfile as sf
 
 try:
@@ -70,6 +77,9 @@ try:
 except Exception:
     pass
 
+# =========================
+# TTS + DSP LIBS
+# =========================
 from TTS.api import TTS
 import librosa
 import scipy.signal
@@ -98,24 +108,9 @@ def rubberband_cli_available() -> bool:
 HAS_RUBBERBAND_CLI = rubberband_cli_available()
 HAS_RUBBERBAND = bool(HAS_RUBBERBAND_PY and HAS_RUBBERBAND_CLI)
 
-
-def set_repro_seed(seed: int):
-    seed = int(seed) & 0xFFFFFFFF
-    random.seed(seed)
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-    if torch.cuda.is_available():
-        torch.cuda.manual_seed_all(seed)
-
-
-torch.backends.cudnn.benchmark = False
-torch.backends.cudnn.deterministic = True
-try:
-    torch.use_deterministic_algorithms(True)
-except Exception:
-    pass
-
-
+# =========================
+# HELPERS
+# =========================
 def _read_json(path: str) -> dict:
     with open(path, "r", encoding="utf-8") as f:
         return json.load(f)
@@ -160,6 +155,7 @@ def normalize_fx_profile(p: dict) -> dict:
 
     out = dict(p)
 
+    # HARD SAFE: time_stretch must be >= 1e-6, but we want "no stretch" => 1.0
     if "time_stretch" in out and out["time_stretch"] is not None:
         ts = _safe_float(out["time_stretch"], 1.0)
         if ts is None or ts <= 0.0:
@@ -193,6 +189,9 @@ def normalize_fx_profile(p: dict) -> dict:
     return out
 
 
+# =========================
+# FX STORE
+# =========================
 @dataclass
 class FXStore:
     root_dir: str
@@ -274,6 +273,9 @@ class FXStore:
         return sorted(list((self._cache_emotions or {}).keys()))
 
 
+# =========================
+# APP + OSC
+# =========================
 app = Flask(__name__)
 osc_client = SimpleUDPClient(OSC_HOST, OSC_PORT)
 
@@ -308,6 +310,9 @@ AUDIO_LOCK = threading.Lock()
 fx_store = FXStore(root_dir=FX_DIR)
 
 
+# =========================
+# FILE ENSURE
+# =========================
 def ensure_voice_files():
     missing = [p for p in EMOTION_WAVS.values() if not os.path.exists(p)]
     if missing:
@@ -331,7 +336,7 @@ def ensure_fx_files():
                 [120.0, -3.0, 1.0],
                 [220.0, -1.5, 1.0],
                 [420.0, -2.0, 1.0],
-                [3200.0, 1.2, 1.0],
+                [3200.0, 1.2, 1.0],  # weniger boost -> weniger "robot" betont
                 [11000.0, 0.8, 0.7],
             ],
             "compressor": {
@@ -340,7 +345,7 @@ def ensure_fx_files():
                 "ratio": 2.4,
                 "attack_ms": 7.0,
                 "release_ms": 110.0,
-                "makeup_db": 1.0,
+                "makeup_db": 1.0,  # sanfter
             },
             "normalize_lufs": -16.0,
             "limiter": {"enabled": True, "ceiling_db": -1.5},
@@ -377,6 +382,9 @@ def ensure_fx_files():
     fx_store.reload_if_changed()
 
 
+# =========================
+# DEVICE CHOICE
+# =========================
 def choose_torch_device() -> str:
     if GPU_INDEX is None:
         print("[XTTS] GPU disabled -> using CPU")
@@ -395,6 +403,9 @@ def choose_torch_device() -> str:
     return f"cuda:{GPU_INDEX}"
 
 
+# =========================
+# WAV HELPERS
+# =========================
 def float32_to_int16(wav_f32: np.ndarray) -> np.ndarray:
     wav_f32 = np.asarray(wav_f32, dtype=np.float32)
     wav_f32 = np.clip(wav_f32, -1.0, 1.0)
@@ -419,6 +430,9 @@ def save_wav_file(pcm16: np.ndarray, sr: int, ch: int, path: str):
         f.write(pcm16_to_wav_bytes(pcm16, sr, ch))
 
 
+# =========================
+# LIPSYNC
+# =========================
 def compute_envelope(wav_f32: np.ndarray, sr: int, frame_ms: int = 20, hop_ms: int = 10):
     if wav_f32.ndim > 1:
         wav = wav_f32.mean(axis=1)
@@ -485,6 +499,9 @@ def lipsync_from_audio(wav_f32: np.ndarray, sr: int, stop_event: threading.Event
     clear_mouth()
 
 
+# =========================
+# FX DSP
+# =========================
 def db_to_lin(db: float) -> float:
     return float(10 ** (db / 20.0))
 
@@ -569,13 +586,19 @@ def loudness_normalize(wav: np.ndarray, sr: int, target_lufs: float) -> np.ndarr
 
 
 def apply_pitch_and_time(wav: np.ndarray, sr: int, pitch_semitones: float, time_stretch: float) -> tuple[np.ndarray, str]:
+    """
+    Returns: (audio, backend_used)
+    backend_used: "rubberband" or "librosa"
+    """
     x = np.asarray(wav, dtype=np.float32)
 
+    # safety
     if time_stretch is None or time_stretch <= 0:
         time_stretch = 1.0
 
     backend = "librosa"
 
+    # time stretch
     if abs(time_stretch - 1.0) > 1e-3:
         if HAS_RUBBERBAND:
             try:
@@ -586,7 +609,9 @@ def apply_pitch_and_time(wav: np.ndarray, sr: int, pitch_semitones: float, time_
         else:
             x = librosa.effects.time_stretch(x, rate=time_stretch)
 
+    # pitch shift
     if pitch_semitones and abs(pitch_semitones) > 1e-3:
+        # kleine Pitches sind anfällig: wir nutzen HQ+Formant+Transients
         if HAS_RUBBERBAND:
             try:
                 x = pyrb.pitch_shift(
@@ -667,8 +692,7 @@ def add_end_padding_and_fade(wav_f32: np.ndarray, sr: int, pad_ms: int, fade_ms:
     if pad_ms and pad_ms > 0:
         pad_n = int(sr * pad_ms / 1000.0)
         if pad_n > 0:
-            noise = (np.random.randn(pad_n).astype(np.float32) * 0.00035)
-            x = np.concatenate([x, noise], axis=0)
+            x = np.concatenate([x, np.zeros(pad_n, dtype=np.float32)], axis=0)
 
     return x
 
@@ -689,42 +713,12 @@ def resolve_emotion_key(emotion: str) -> str:
     return DEFAULT_EMOTION
 
 
-_END_PUNCT = (".", "!", "?", "…", ":", ";")
-
-def coerce_text_to_string(text_obj) -> str:
-    if isinstance(text_obj, dict):
-        text_obj = text_obj.get("value", "")
-
-    if isinstance(text_obj, (list, tuple)):
-        parts = []
-        for x in text_obj:
-            if x is None:
-                continue
-            s = str(x).strip()
-            if not s:
-                continue
-            parts.append(s)
-
-        out = ""
-        for p in parts:
-            if not out:
-                out = p
-                continue
-            if out.rstrip().endswith(_END_PUNCT):
-                out += " " + p
-            else:
-                out += ". " + p
-        text_obj = out
-
-    s = str(text_obj or "").strip()
-    s = re.sub(r"\s+", " ", s)
-    if s and not s.endswith(_END_PUNCT):
-        s += "."
-    return s
-
-
+# =========================
+# INIT MODEL
+# =========================
 ensure_voice_files()
 ensure_fx_files()
+
 TTS_DEVICE = choose_torch_device()
 
 print(f"[XTTS] Loading model {TTS_MODEL_NAME} on {TTS_DEVICE} ...")
@@ -738,6 +732,9 @@ except Exception:
 print("[FX] HAS_RUBBERBAND_PY:", HAS_RUBBERBAND_PY, "HAS_RUBBERBAND_CLI:", HAS_RUBBERBAND_CLI, "USING_RUBBERBAND:", HAS_RUBBERBAND)
 
 
+# =========================
+# SYNTH + PLAY
+# =========================
 def synthesize_wav_f32(text: str, emotion: str, tuning: dict | None = None):
     emotion_key = resolve_emotion_key(emotion)
     ref = EMOTION_WAVS.get(emotion_key, EMOTION_WAVS[DEFAULT_EMOTION])
@@ -808,6 +805,9 @@ def speak_task(text: str, save_wav: bool, play_audio: bool, wav_path: str | None
         print("TTS error:", repr(e), flush=True)
 
 
+# =========================
+# ROUTES
+# =========================
 @app.get("/health")
 def health():
     return jsonify({
@@ -876,26 +876,19 @@ def tts():
     payload = request.get_json(silent=True) or {}
     print(payload, flush=True)
 
-    seed = payload.get("seed", None)
-    if seed is not None:
-        try:
-            seed = int(seed)
-            set_repro_seed(seed)
-        except Exception:
-            seed = None
-
-    text_raw = payload.get("text") or ""
+    text = payload.get("text") or ""
     emotion = payload.get("emotion") or "natural"
 
-    if isinstance(text_raw, dict) and "value" in text_raw:
-        if "emotion" in text_raw:
-            emotion = text_raw.get("emotion") or emotion
+    if isinstance(text, dict) and "value" in text:
+        if "emotion" in text:
+            emotion = text.get("emotion") or emotion
+        text = text.get("value") or ""
 
     tuning = payload.get("tuning")
     if tuning is not None and not isinstance(tuning, dict):
         tuning = None
 
-    text = coerce_text_to_string(text_raw)
+    text = str(text).strip()
     emotion = str(emotion).strip().lower()
 
     if not text:
@@ -923,8 +916,6 @@ def tts():
 
             resp = Response(wav_bytes, mimetype="audio/wav")
             resp.headers["X-Pitch-Backend"] = backend
-            if seed is not None:
-                resp.headers["X-Seed"] = str(seed)
             return resp
         except Exception as e:
             return jsonify({"ok": False, "error": repr(e)}), 500
@@ -948,7 +939,6 @@ def tts():
         "has_rubberband_cli": HAS_RUBBERBAND_CLI,
         "using_rubberband": HAS_RUBBERBAND,
         "has_loudnorm": HAS_LOUDNORM,
-        "seed": seed,
         "fx_dir": FX_DIR,
         "voice_fx_enabled": VOICE_FX_ENABLED,
         "global_fx_enabled": GLOBAL_FX_ENABLED,
