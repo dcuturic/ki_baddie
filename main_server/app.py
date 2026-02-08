@@ -47,7 +47,7 @@ DILARA_MODES: Dict[str, Dict[str, str]] = {
             "- Übertreibung ist Pflicht: große Dankbarkeit, starke Wärme, echter Stream-Vibe.\n\n"
             "OUTPUT: Nur der Dankestext."
         ),
-        "emotion": "happy"
+        "emotion": "joy"
     },
 
     "begrüßen": {
@@ -66,7 +66,7 @@ DILARA_MODES: Dict[str, Dict[str, str]] = {
             "- ruhig-warm / maximal-hype / playful-frech / classy-queen / mock-serious\n\n"
             "OUTPUT: Nur der Begrüßungstext."
         ),
-        "emotion": "happy"
+        "emotion": "joy"
     },
 
     "roasten": {
@@ -91,7 +91,7 @@ DILARA_MODES: Dict[str, Dict[str, str]] = {
             "5) genervt-überlegen, aber spielerisch\n\n"
             "OUTPUT: Nur der Roast."
         ),
-        "emotion": "sarcastic"
+        "emotion": "fun"
     },
 
     "trösten": {
@@ -110,7 +110,7 @@ DILARA_MODES: Dict[str, Dict[str, str]] = {
             "- Übertreib warm, beschützend, liebevoll – aber glaubwürdig.\n\n"
             "OUTPUT: Nur der Trost-Text."
         ),
-        "emotion": "calm"
+        "emotion": "sorrow"
     },
 
     "hype": {
@@ -127,7 +127,7 @@ DILARA_MODES: Dict[str, Dict[str, str]] = {
             "- Kein Meta.\n\n"
             "OUTPUT: Nur der Hype-Text."
         ),
-        "emotion": "excited"
+        "emotion": "fun"
     },
 
     "love": {
@@ -145,7 +145,7 @@ DILARA_MODES: Dict[str, Dict[str, str]] = {
             "- Kein Meta.\n\n"
             "OUTPUT: Nur der Love-Text."
         ),
-        "emotion": "excited"
+        "emotion": "fun"
     },
 
     "gott": {
@@ -162,7 +162,7 @@ DILARA_MODES: Dict[str, Dict[str, str]] = {
             "- Kein Meta.\n\n"
             "OUTPUT: Nur der Text."
         ),
-        "emotion": "excited"
+        "emotion": "fun"
     },
 
     "daddy": {
@@ -179,7 +179,7 @@ DILARA_MODES: Dict[str, Dict[str, str]] = {
             "- Kein Meta.\n\n"
             "OUTPUT: Nur der Text."
         ),
-        "emotion": "excited"
+        "emotion": "fun"
     },
 
     "geburtstag": {
@@ -199,7 +199,7 @@ DILARA_MODES: Dict[str, Dict[str, str]] = {
             "- Feierlich, herzlich, übertrieben liebevoll.\n\n"
             "OUTPUT: Nur der Geburtstags-Text."
         ),
-        "emotion": "happy"
+        "emotion": "joy"
     },
 
     "horror_story": {
@@ -220,7 +220,7 @@ DILARA_MODES: Dict[str, Dict[str, str]] = {
             "- Flüsternd, cineastisch, wie eine Nachtgeschichte, die hängen bleibt.\n\n"
             "OUTPUT: Nur die Horrorgeschichte."
         ),
-        "emotion": "dark"
+        "emotion": "fun"
     },
 
     "lustige_story": {
@@ -238,7 +238,7 @@ DILARA_MODES: Dict[str, Dict[str, str]] = {
             "- Zuschauer sollen schmunzeln oder lachen.\n\n"
             "OUTPUT: Nur die lustige Geschichte."
         ),
-        "emotion": "happy"
+        "emotion": "fun"
     },
 
     "drink_reminder": {
@@ -253,7 +253,7 @@ DILARA_MODES: Dict[str, Dict[str, str]] = {
             "- Kein Meta.\n\n"
             "OUTPUT: Nur die Erinnerung."
         ),
-        "emotion": "calm"
+        "emotion": "neutral"
     }
 }
 
@@ -460,6 +460,7 @@ def do_call_tts_dilara_free_logic(
         return None
 
     message_template = cfg.get("message", "")
+    print(modus) 
     emotion_default = cfg.get("emotion", "")
     if not message_template:
         print(f"[WARN] Modus '{modus}' hat keine 'message' in der Config.")
@@ -480,7 +481,7 @@ def do_call_tts_dilara_free_logic(
     r.raise_for_status()
     data: Dict[str, Any] = r.json()
     reply = (data.get("reply") or "").strip()
-    emotion = (data.get("emotion") or emotion_default).strip()
+    emotion = (emotion_default).strip()
 
     # Anti-Fallback: Modell erzählt "Computerprogramm"
     bad_markers = ["computerprogramm", "ki", "assistant", "missverständnis"]
@@ -497,7 +498,7 @@ def do_call_tts_dilara_free_logic(
         r2.raise_for_status()
         data2 = r2.json()
         reply = (data2.get("reply") or "").strip()
-        emotion = (data2.get("emotion") or emotion_default).strip()
+        emotion = (emotion_default).strip()
 
     print(reply, flush=True)
     send_this_tts = {"text": {"value": reply, "emotion": emotion}}

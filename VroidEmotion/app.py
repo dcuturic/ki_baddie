@@ -245,7 +245,7 @@ def set_emotion():
 
     key = EMOTION_MAP.get(emotion, emotion)  # erlaubt direkte Keys
     blend.set_exclusive_target(key, intensity)
-
+    print("emotion",emotion)
     return jsonify(ok=True, emotion=emotion, key=key, intensity=clamp01(intensity), fade=blend.fade_time)
 
 

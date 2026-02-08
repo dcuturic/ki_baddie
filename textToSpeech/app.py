@@ -35,7 +35,12 @@ LANGUAGE = "de"
 XTTS_SR = 24000
 
 EMOTION_WAVS = {
+    "joy": "voices/neutral.wav",
+    "angry": "voices/neutral.wav",
+    "sorrow": "voices/neutral.wav",
+    "fun": "voices/neutral.wav",
     "neutral": "voices/neutral.wav",
+    "surprise": "voices/neutral.wav",
 }
 DEFAULT_EMOTION = "neutral"
 
@@ -682,7 +687,7 @@ def sanitize_audio(wav: np.ndarray) -> np.ndarray:
 
 def resolve_emotion_key(emotion: str) -> str:
     e = (emotion or "").strip().lower()
-    if e in ("natural", ""):
+    if e in ():
         e = DEFAULT_EMOTION
     if e in EMOTION_WAVS:
         return e
@@ -785,7 +790,7 @@ def play_audio_blocking(wav_f32: np.ndarray, sr: int, emotion: str):
         clear_mouth()
 
         try:
-            requests.post("http://127.0.0.1:5004/emotion", json={"emotion": "natural"}, timeout=30)
+            requests.post("http://127.0.0.1:5004/emotion", json={"emotion": "neutral"}, timeout=30)
         except Exception:
             pass
 
@@ -885,10 +890,21 @@ def tts():
             seed = None
 
     text_raw = payload.get("text") or ""
-    emotion = payload.get("emotion") or "natural"
+    emotion = payload.get("emotion") or payload.get("emotion") or"neutral"
 
     if isinstance(text_raw, dict) and "value" in text_raw:
-        if "emotion" in text_raw:
+        if isinstance(text_raw, dict) and "emotion" in text_raw:
+            print("JUMP")
+            print("JUMP")
+            print("JUMP")
+            print("JUMP")
+            print("JUMP")
+            print("JUMP")
+            print("JUMP")
+            print("JUMP")
+            print("JUMP")
+            print("JUMP")
+            print("JUMP")
             emotion = text_raw.get("emotion") or emotion
 
     tuning = payload.get("tuning")
