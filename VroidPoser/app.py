@@ -13,8 +13,8 @@ from osc4py3 import oscbuildparse
 
 app = Flask(__name__)
 
-POSES_DIR = "Poses"
-MOVES_DIR = "Moves"
+POSES_DIR = "api_used/poses"
+MOVES_DIR = "api_used/moves"
 RES_DIR = "Resources"
 
 JOY_RANGE = 80
@@ -959,7 +959,7 @@ def idle_motion():
         start_idle_motion()
     return jsonify({"ok": True, "idle_motion_enabled": state.idle_motion_enabled})
 
-@app.post("/play/pose/<name>")
+@app.post("/play/pose/<path:name>")
 def play_pose(name):
     path_txt = os.path.join(POSES_DIR, f"{name}.txt")
     path_json = os.path.join(POSES_DIR, f"{name}.json")
@@ -972,7 +972,10 @@ def play_pose(name):
     start_background(lambda: play_pose_file(path))
     return jsonify({"ok": True, "playing": {"type": "pose", "name": name, "file": os.path.basename(path)}})
 
-@app.post("/play/motion/<name>")
+path = os.path.join(POSES_DIR, f"default/idle")
+start_background(lambda: play_pose_file(path))
+
+@app.post("/play/motion/<path:name>")
 def play_motion_route(name):
     folder = os.path.join(MOVES_DIR, name)
     if not os.path.isdir(folder):

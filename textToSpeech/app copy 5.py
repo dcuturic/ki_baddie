@@ -113,10 +113,10 @@ def set_repro_seed(seed: int):
         torch.cuda.manual_seed_all(seed)
 
 
-torch.backends.cudnn.benchmark = True
-torch.backends.cudnn.deterministic = False
+torch.backends.cudnn.benchmark = False
+torch.backends.cudnn.deterministic = True
 try:
-    torch.use_deterministic_algorithms(False)
+    torch.use_deterministic_algorithms(True)
 except Exception:
     pass
 
@@ -739,10 +739,7 @@ try:
     _ = tts_model.tts(text="Warmup.", speaker_wav=EMOTION_WAVS[DEFAULT_EMOTION], language=LANGUAGE)
 except Exception:
     pass
-try:
-    tts_model.model = torch.compile(tts_model.model, mode="max-autotune")
-except Exception as e:
-    print("torch.compile not available/failed:", e)
+
 print("[FX] HAS_RUBBERBAND_PY:", HAS_RUBBERBAND_PY, "HAS_RUBBERBAND_CLI:", HAS_RUBBERBAND_CLI, "USING_RUBBERBAND:", HAS_RUBBERBAND)
 
 
@@ -774,62 +771,8 @@ def synthesize_wav_f32(text: str, emotion: str, tuning: dict | None = None):
     return wav_f32, XTTS_SR, 1, emotion_key, ref, pitch_backend_used
 
 
-liste_dict = [
-    {
-        "emotion":"default",
-        "desc":"standard sachen",
-        "elements" : [{
-            "datei":"1",
-            "desc":"mach"
-        },{
-            "datei":"chiller",
-            "desc":"mach"
-        },{
-            "datei":"denker",
-            "desc":"mach"
-        },{
-            "datei":"ginyu",
-            "desc":"mach"
-        },{
-            "datei":"isso",
-            "desc":"mach"
-        },{
-            "datei":"jump",
-            "desc":"mach"
-        },{
-            "datei":"kick",
-            "desc":"mach"
-        },{
-            "datei":"meditieren",
-            "desc":"mach"
-        },{
-            "datei":"salotieren",
-            "desc":"mach"
-        },{
-            "datei":"sitzen",
-            "desc":"mach"
-        },{
-            "datei":"speak",
-            "desc":"mach"
-        }]
-    }
-]
-import random
-import math
-
 def play_audio_blocking(wav_f32: np.ndarray, sr: int, emotion: str):
     with AUDIO_LOCK:
-        idx_emotion = math.floor(random.random() * len(liste_dict))
-        emotion_pose_dict = liste_dict[idx_emotion]
-
-        elements = emotion_pose_dict["elements"]
-        idx_pose = math.floor(random.random() * len(elements))
-        emotion_pose = elements[idx_pose]
-
-        emotion_pose_file = emotion_pose["datei"]
-        emotion_pose_name = emotion_pose_dict["emotion"]
-
-
         try:
             requests.post("http://127.0.0.1:5004/emotion", json={"emotion": emotion}, timeout=30)
         except Exception:
@@ -837,7 +780,7 @@ def play_audio_blocking(wav_f32: np.ndarray, sr: int, emotion: str):
         
 
         try:
-            requests.post("http://127.0.0.1:5000/play/pose/"+emotion_pose_name+"/"+emotion_pose_file+"", timeout=30)
+            requests.post("http://127.0.0.1:5000/play/pose/default/1", timeout=30)
         except Exception:
             pass
 
@@ -845,7 +788,7 @@ def play_audio_blocking(wav_f32: np.ndarray, sr: int, emotion: str):
         lip_thread = threading.Thread(target=lipsync_from_audio, args=(wav_f32, sr, local_stop), daemon=True)
         lip_thread.start()
 
-        
+
 
         sd.stop()
         sd.play(wav_f32, sr, device=CABLE_DEVICE_ID)

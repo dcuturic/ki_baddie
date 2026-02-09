@@ -12,7 +12,7 @@ from zoneinfo import ZoneInfo
 # ======================= CONFIG =======================
 
 OLLAMA_URL = "http://localhost:11434/api/chat"
-MODEL = "llama3.1:8b-instruct-q4_K_M"
+MODEL = "deeliar-m4000-perf:latest"
 DB_PATH = "memory.db"
 
 TIMEZONE = "Europe/Berlin"
@@ -934,10 +934,10 @@ def ollama_chat(messages: List[Dict[str, str]]) -> str:
         "model": MODEL,
         "messages": messages,
         "options": {
-            "num_ctx": 2048,
-            "temperature": 0.9,
-            "repeat_penalty": 1.1,
-            "top_p": 0.95,
+                        "num_ctx": 2048,
+            "temperature": 0.6,
+            "top_p": 0.98,
+            "repeat_penalty": 1.1, 
             "num_batch": 1024
         },
         "stream": False
@@ -954,12 +954,11 @@ def ollama_think(prompt: str) -> str:
             {"role": "user", "content": prompt.strip()},
         ],
         "options": {
-            "num_ctx": 1536,
-            "temperature": 0.95,
-            "repeat_penalty": 1.05,
-            "top_p": 0.95,
-            "num_batch": 512,
-            "num_predict": 160
+                       "num_ctx": 2048,
+            "temperature": 0.6,
+            "top_p": 0.98,
+            "repeat_penalty": 1.1, 
+            "num_batch": 1024
         },
         "stream": False
     }
@@ -1260,10 +1259,9 @@ def ollama_chat_free(prompt: str, system_prompt: str = DILARA_SYSTEM_PROMPT) -> 
         ],
         "options": {
             "num_ctx": 2048,
-            "temperature": 1.1,
+            "temperature": 0.6,
             "top_p": 0.98,
-            "repeat_penalty": 1.05,
-            "num_predict": 120,
+            "repeat_penalty": 1.1, 
             "num_batch": 1024
         },
         "stream": False

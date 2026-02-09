@@ -220,7 +220,7 @@ DILARA_MODES: Dict[str, Dict[str, str]] = {
             "- Flüsternd, cineastisch, wie eine Nachtgeschichte, die hängen bleibt.\n\n"
             "OUTPUT: Nur die Horrorgeschichte."
         ),
-        "emotion": "fun"
+        "emotion": "surprise"
     },
 
     "lustige_story": {

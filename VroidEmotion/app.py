@@ -22,7 +22,8 @@ EMOTION_MAP: Dict[str, str] = {
     "sorrow": "Sorrow",
     "fun": "Fun",
     "neutral": "Neutral",  # oft existiert Neutral NICHT, ist okay
-    "surprise": "Surprise"  # oft existiert Neutral NICHT, ist okay
+    "surprise": "Surprised",  # oft existiert Neutral NICHT, ist okay,
+    "surprised": "Surprised",
     
 }
 
@@ -244,6 +245,7 @@ def set_emotion():
             return jsonify(ok=False, error="Invalid 'fade'"), 400
 
     key = EMOTION_MAP.get(emotion, emotion)  # erlaubt direkte Keys
+    print(key, intensity)
     blend.set_exclusive_target(key, intensity)
     print("emotion",emotion)
     return jsonify(ok=True, emotion=emotion, key=key, intensity=clamp01(intensity), fade=blend.fade_time)
