@@ -1,0 +1,18 @@
+{
+  "camera_pos": [
+    0.0,
+    1.55,
+    0.85
+  ],
+  "eyes_height": 1.55,
+  "head_height": 1.48,
+  "eyes_strength": 1.0,
+  "face_strength": 1.0,
+  "max_eye_yaw": 0.65,
+  "max_eye_pitch": 0.45,
+  "max_face_yaw": 0.55,
+  "max_face_pitch": 0.45,
+  "update_hz": 30,
+  "smooth": 0.15,
+  "neck_ratio": 0.55
+}

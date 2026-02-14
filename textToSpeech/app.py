@@ -779,39 +779,15 @@ liste_dict = [
         "emotion":"default",
         "desc":"standard sachen",
         "elements" : [{
-            "datei":"1",
+            "datei":"pose_20260210225531227",
             "desc":"mach"
         },{
-            "datei":"chiller",
+            "datei":"pose_20260210225631127",
             "desc":"mach"
         },{
-            "datei":"denker",
+            "datei":"pose_20260210225643907",
             "desc":"mach"
-        },{
-            "datei":"ginyu",
-            "desc":"mach"
-        },{
-            "datei":"isso",
-            "desc":"mach"
-        },{
-            "datei":"jump",
-            "desc":"mach"
-        },{
-            "datei":"kick",
-            "desc":"mach"
-        },{
-            "datei":"meditieren",
-            "desc":"mach"
-        },{
-            "datei":"salotieren",
-            "desc":"mach"
-        },{
-            "datei":"sitzen",
-            "desc":"mach"
-        },{
-            "datei":"speak",
-            "desc":"mach"
-        }]
+        } ]
     }
 ]
 import random

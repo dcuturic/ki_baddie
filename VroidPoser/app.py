@@ -13,16 +13,20 @@ from osc4py3 import oscbuildparse
 
 app = Flask(__name__)
 
-POSES_DIR = "api_used/poses"
-MOVES_DIR = "api_used/moves"
+POSES_DIR = "api_used/poses/default"
+MOVES_DIR = "api_used/moves/default"
+FIGHT_POSE = "api_used/poses/default/fight"
 RES_DIR = "Resources"
 
 JOY_RANGE = 80
-DEFAULT_SPEED = 1.0
+DEFAULT_SPEED = 2.9
 
 POSE_EXTS = (".txt", ".json")
 
 POSE_JSON_CFG_PATH = os.path.join(RES_DIR, "pose_json_config.json")
+
+HEAD_LOOK_UP_RAD = 0.505  # ~3.4°; erhöhe z.B. 0.08..0.12 wenn nötig
+NECK_LOOK_UP_RAD = 0.5
 
 IDLE_UPDATE_HZ = 30
 IDLE_TARGET_INTERVAL = (1.0, 2.0)
@@ -688,6 +692,14 @@ def parse_pose_json(path: str) -> Tuple[float, List[float], Dict[str, List[float
             q = _vrm_to_vmc_quat(q)
 
         targets_quat[vseeface_bone] = q
+        head_bias = euler_xyz_to_quat(HEAD_LOOK_UP_RAD, 0.0, 0.0)
+        neck_bias = euler_xyz_to_quat(NECK_LOOK_UP_RAD, 0.0, 0.0)
+
+        if "Head" in targets_quat:
+            targets_quat["Head"] = quat_mul(targets_quat["Head"], head_bias)
+
+        if "Neck" in targets_quat:
+            targets_quat["Neck"] = quat_mul(targets_quat["Neck"], neck_bias)
 
     if POSE_JSON_CFG.get("thumb_fix", True):
         for side in ("Left", "Right"):
@@ -741,7 +753,8 @@ def play_pose_file(path: str):
 
     step = max(0.001, float(speed) / 100.0)
     x = 0.0
-
+    print(kind)
+    print(path)
     if kind == "json":
         targets_quat: Dict[str, List[float]] = targets
         bones = list(targets_quat.keys())
@@ -959,8 +972,45 @@ def idle_motion():
         start_idle_motion()
     return jsonify({"ok": True, "idle_motion_enabled": state.idle_motion_enabled})
 
+
+@app.get("/play/motion/random")
+def play_motion_route_random():
+    state.idle_motion_enabled = False
+    all_files = [
+        f for f in os.listdir(FIGHT_POSE)
+        if os.path.isfile(os.path.join(FIGHT_POSE, f))
+    ]
+
+    if len(all_files) < 3:
+        return jsonify({
+            "ok": False,
+            "error": "Not enough motion files available"
+        }), 400
+
+    random_files = random.sample(all_files, 6)
+    random_files.append("../idle.json")
+    with state.lock:
+        if state.is_playing:
+            return jsonify({
+                "ok": False,
+                "error": "Already playing. Call /stop first."
+            }), 409
+    print(FIGHT_POSE)
+    print(random_files)
+    start_background(lambda: play_motion_without_filepath(FIGHT_POSE,random_files))
+    state.idle_motion_enabled = True
+    return jsonify({
+        "ok": True,
+        "playing": {
+            "type": "motion",
+            "name": random_files
+        }
+    })
+
+
 @app.post("/play/pose/<path:name>")
 def play_pose(name):
+    state.idle_motion_enabled = False
     path_txt = os.path.join(POSES_DIR, f"{name}.txt")
     path_json = os.path.join(POSES_DIR, f"{name}.json")
     path = path_txt if os.path.exists(path_txt) else path_json
@@ -970,13 +1020,15 @@ def play_pose(name):
         if state.is_playing:
             return jsonify({"ok": False, "error": "Already playing. Call /stop first."}), 409
     start_background(lambda: play_pose_file(path))
+    state.idle_motion_enabled = True
     return jsonify({"ok": True, "playing": {"type": "pose", "name": name, "file": os.path.basename(path)}})
 
-path = os.path.join(POSES_DIR, f"default/idle")
+path = os.path.join(POSES_DIR, f"idle.json")
 start_background(lambda: play_pose_file(path))
 
 @app.post("/play/motion/<path:name>")
 def play_motion_route(name):
+    state.idle_motion_enabled = False
     folder = os.path.join(MOVES_DIR, name)
     if not os.path.isdir(folder):
         return jsonify({"ok": False, "error": f"Motion not found: {name}"}), 404
@@ -984,7 +1036,40 @@ def play_motion_route(name):
         if state.is_playing:
             return jsonify({"ok": False, "error": "Already playing. Call /stop first."}), 409
     start_background(lambda: play_motion(name))
+    state.idle_motion_enabled = True
     return jsonify({"ok": True, "playing": {"type": "motion", "name": name}})
+
+
+@app.get("/play/motion/<path:text>")
+def play_motion_routeget(text):
+    state.idle_motion_enabled = False
+    folder = os.path.join(MOVES_DIR, text)
+    if not os.path.isdir(folder):
+        return jsonify({"ok": False, "error": f"Motion not found: {text}"}), 404
+
+    with state.lock:
+        if state.is_playing:
+            return jsonify({"ok": False, "error": "Already playing. Call /stop first."}), 409
+
+    start_background(lambda: play_motion(text))
+    state.idle_motion_enabled = True
+
+    return jsonify({
+        "ok": True,
+        "playing": {
+            "type": "motion",
+            "text": text
+        } 
+    })
+
+
+def play_motion_without_filepath(path,lines: list):
+    for pose_name in lines:
+        with state.lock:
+            if state.stop_flag:
+                return
+        play_pose_file(path+"/"+pose_name)
+
 
 @app.post("/stop")
 def stop():

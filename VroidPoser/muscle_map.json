@@ -1,0 +1,11 @@
+{
+  "vrm_to_vmc": false,
+  "use_body_position": true,
+  "use_body_rotation": true,
+  "muscle_to_bone_euler": {
+    "spine": { "indices": [0, 1, 2], "scale": [0.25, 0.25, 0.25], "offset": [0, 0, 0] },
+    "chest": { "indices": [3, 4, 5], "scale": [0.20, 0.20, 0.20], "offset": [0, 0, 0] },
+    "neck":  { "indices": [6, 7, 8], "scale": [0.25, 0.25, 0.25], "offset": [0, 0, 0] },
+    "head":  { "indices": [9, 10, 11], "scale": [0.25, 0.25, 0.25], "offset": [0, 0, 0] }
+  }
+}

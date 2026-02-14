@@ -1,6 +1,6 @@
 {
-  "vrm_to_vmc": true,
+  "vrm_to_vmc": false,
   "use_hips_position": true,
-  "swap_lr": false,
+  "swap_lr": true,
   "thumb_fix": true
 }

@@ -2,7 +2,6 @@
 taskkill /F /IM ollama.exe 2>$null
 
 # CUDA Device setzen
-$env:CUDA_VISIBLE_DEVICES = "1"
 $env:OLLAMA_CONTEXT_LENGTH = "4096" 
 $env:CUDA_VISIBLE_DEVICES = "1" 
 $env:OLLAMA_NUM_THREADS = "$THREADS" 
