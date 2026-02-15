@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}KI Girl Manager{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="layout">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <h1>🎭 KI Girl</h1>
+                <p class="sidebar-subtitle">Project Manager</p>
+            </div>
+            
+            <nav class="sidebar-nav">
+                <!-- Home / Instanzen -->
+                <a href="/" class="nav-item {% if request.path == '/' %}active{% endif %}">
+                    <span class="nav-icon">🏠</span>
+                    <span class="nav-label">Startseite</span>
+                </a>
+                
+                <!-- Current Instance Navigation (if on instance page) -->
+                {% if '/instance/' in request.path %}
+                    {% set instance_match = request.path.split('/')[2] if request.path.startswith('/instance/') else None %}
+                    {% if instance_match %}
+                    <div class="nav-separator"></div>
+                    
+                    <a href="/instance/{{ instance_match }}/dashboard" class="nav-item {% if '/dashboard' in request.path %}active{% endif %}">
+                        <span class="nav-icon">📊</span>
+                        <span class="nav-label">Dashboard</span>
+                    </a>
+                    <a href="/instance/{{ instance_match }}/services" class="nav-item {% if '/services' in request.path %}active{% endif %}">
+                        <span class="nav-icon">⚙️</span>
+                        <span class="nav-label">Services</span>
+                    </a>
+                    <a href="/instance/{{ instance_match }}/config" class="nav-item {% if '/config' in request.path and '/configs' not in request.path %}active{% endif %}">
+                        <span class="nav-icon">🧩</span>
+                        <span class="nav-label">Instance Config</span>
+                    </a>
+                    
+                    <div class="nav-separator"></div>
+                    {% endif %}
+                {% endif %}
+                
+                <!-- Global Pages -->
+                <a href="/configs" class="nav-item {% if request.path.startswith('/configs') %}active{% endif %}">
+                    <span class="nav-icon">⚙️</span>
+                    <span class="nav-label">Einstellungen</span>
+                </a>
+            </nav>
+            
+            <div class="sidebar-footer">
+                <div class="status-indicator">
+                    <span class="status-dot"></span>
+                    <span class="status-text">Manager läuft</span>
+                </div>
+            </div>
+        </aside>
+        
+        <!-- Main Content -->
+        <main class="main-content">
+            <header class="page-header">
+                <div class="page-title">
+                    <h2>{% block page_title %}Dashboard{% endblock %}</h2>
+                    <p class="page-subtitle">{% block page_subtitle %}Übersicht aller Services{% endblock %}</p>
+                </div>
+                <div class="page-actions">
+                    {% block page_actions %}{% endblock %}
+                </div>
+            </header>
+            
+            <div class="page-content">
+                {% block content %}{% endblock %}
+            </div>
+        </main>
+    </div>
+    
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/simple_fields.js') }}"></script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

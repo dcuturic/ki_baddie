@@ -1,0 +1,53 @@
+{
+  "blend_controller": {
+    "fade_time": 0.35,
+    "fps": 60
+  },
+  "emotion_map": {
+    "angry": "Angry",
+    "fun": "Fun",
+    "joy": "Joy",
+    "neutral": "Neutral",
+    "sorrow": "Sorrow",
+    "surprise": "Surprised",
+    "surprised": "Surprised"
+  },
+  "osc": {
+    "enabled": true,
+    "host": "127.0.0.1",
+    "port": 39539
+  },
+  "osc_paths": {
+    "blend_apply": "/VMC/Ext/Blend/Apply",
+    "blend_val": "/VMC/Ext/Blend/Val"
+  },
+  "reset_keys": [
+    "Joy",
+    "Angry",
+    "Anger",
+    "Sorrow",
+    "Fun",
+    "Neutral",
+    "Surprised",
+    "Surprise",
+    "Relaxed",
+    "Sad",
+    "Happy",
+    "A",
+    "I",
+    "U",
+    "E",
+    "O",
+    "Blink",
+    "Blink_L",
+    "Blink_R",
+    "Smile",
+    "Smirk",
+    "Frown"
+  ],
+  "server": {
+    "debug": false,
+    "host": "0.0.0.0",
+    "port": 6004
+  }
+}

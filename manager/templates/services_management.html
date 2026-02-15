@@ -1,0 +1,489 @@
+{% extends "base.html" %}
+
+{% block page_title %}{{ instance.name }} - Services Verwalten{% endblock %}
+{% block page_subtitle %}Service-Verwaltung und Kontrolle{% endblock %}
+
+{% block page_actions %}
+<div style="display: flex; gap: 1rem; align-items: center;">
+    <select id="instanceSwitcher" onchange="switchToInstance(this.value)" style="padding: 0.75rem 1rem; border-radius: 6px; border: 2px solid var(--accent-primary); background: var(--bg-secondary); color: var(--text-primary); cursor: pointer;">
+        <option value="">-- Instanz wechseln --</option>
+        {% for inst in instances %}
+        <option value="{{ inst.filename }}" {% if inst.filename == instance_name %}selected{% endif %}>
+            {{ inst.name }}
+        </option>
+        {% endfor %}
+    </select>
+    <a href="/instance/{{ instance_name }}/dashboard" class="btn btn-secondary">
+        📊 Dashboard
+    </a>
+    <button class="btn btn-success btn-large" onclick="startAllServices()">
+        ▶️ Alle starten
+    </button>
+    <button class="btn btn-danger btn-large" onclick="stopAllServices()">
+        ⏹️ Alle stoppen
+    </button>
+</div>
+{% endblock %}
+
+{% block content %}
+<!-- Instance Info -->
+<div class="services-header">
+    <div>
+        <h2>{{ instance.name }}</h2>
+        <p class="instance-desc">{{ instance.description or 'Keine Beschreibung' }}</p>
+    </div>
+</div>
+
+<div class="dashboard-stats">
+    <div class="stat-card">
+        <div class="stat-icon">🖥️</div>
+        <div class="stat-content">
+            <h4>Instanz CPU</h4>
+            <p class="stat-number" id="inst-host-cpu">0%</p>
+            <small>Host CPU</small>
+        </div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-icon">🎮</div>
+        <div class="stat-content">
+            <h4>Instanz GPU</h4>
+            <p class="stat-number" id="inst-gpu">0%</p>
+            <small id="inst-gpu-mem">GPU nicht verfügbar</small>
+        </div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-icon">🌐</div>
+        <div class="stat-content">
+            <h4>Netzwerk</h4>
+            <p class="stat-number" id="inst-net">↓ 0 B/s</p>
+            <small id="inst-net-up">↑ 0 B/s</small>
+        </div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-icon">⚙️</div>
+        <div class="stat-content">
+            <h4>Service Last</h4>
+            <p class="stat-number" id="inst-service-cpu">0%</p>
+            <small id="inst-service-ram">0 MB RAM</small>
+        </div>
+    </div>
+</div>
+
+<!-- Services Grid -->
+<div class="services-management-grid">
+    {% if services|length == 0 %}
+    <div class="empty-state">
+        <p>❌ Keine Services in dieser Instanz konfiguriert</p>
+    </div>
+    {% else %}
+    {% for service_id, service in services.items() %}
+    <div class="service-management-card" data-service="{{ service_id }}" id="service-{{ service_id }}">
+        <!-- Header -->
+        <div class="service-card-header">
+            <div class="service-title">
+                <span class="service-icon" style="color: {{ service.color }}">{{ service.icon }}</span>
+                <div>
+                    <h3>{{ service.name }}</h3>
+                    <small class="service-id">{{ service_id }}</small>
+                </div>
+            </div>
+            <span class="status-badge" id="badge-{{ service_id }}">❓</span>
+        </div>
+        
+        <!-- Info -->
+        <div class="service-card-info">
+            <div class="info-row">
+                <span class="label">Typ:</span>
+                <span class="value">{{ service.type }}</span>
+            </div>
+            <div class="info-row">
+                <span class="label">Port:</span>
+                <span class="value">{{ service.port or 'N/A' }}</span>
+            </div>
+            <div class="info-row">
+                <span class="label">Enabled:</span>
+                <span class="value">
+                    <input type="checkbox" id="enabled-{{ service_id }}" 
+                           {% if service.enabled %}checked{% endif %} 
+                           onchange="updateServiceConfig('{{ service_id }}', 'enabled', this.checked)">
+                </span>
+            </div>
+            <div class="info-row">
+                <span class="label">Auto-Start:</span>
+                <span class="value">
+                    <input type="checkbox" id="autostart-{{ service_id }}" 
+                           {% if service.auto_start %}checked{% endif %} 
+                           onchange="updateServiceConfig('{{ service_id }}', 'auto_start', this.checked)">
+                </span>
+            </div>
+        </div>
+        
+        <!-- Stats -->
+        <div class="service-card-stats">
+            <div class="stat-box">
+                <span class="stat-label">CPU</span>
+                <span class="stat-value" id="cpu-{{ service_id }}">0%</span>
+            </div>
+            <div class="stat-box">
+                <span class="stat-label">RAM</span>
+                <span class="stat-value" id="ram-{{ service_id }}">0 MB</span>
+            </div>
+            <div class="stat-box">
+                <span class="stat-label">GPU</span>
+                <span class="stat-value" id="gpu-{{ service_id }}">0%</span>
+            </div>
+            <div class="stat-box">
+                <span class="stat-label">PID</span>
+                <span class="stat-value" id="pid-{{ service_id }}">--</span>
+            </div>
+            <div class="stat-box">
+                <span class="stat-label">Uptime</span>
+                <span class="stat-value" id="uptime-{{ service_id }}">--</span>
+            </div>
+        </div>
+        
+        <!-- Controls -->
+        <div class="service-card-controls">
+            <button class="btn btn-success" onclick="startService('{{ service_id }}')">
+                ▶️ Start
+            </button>
+            <button class="btn btn-warning" onclick="forceStartService('{{ service_id }}')" title="Erzwingt Start: stoppt Port-Blocker und startet neu">
+                ⚡ Erzw. Start
+            </button>
+            <button class="btn btn-danger" onclick="stopService('{{ service_id }}')">
+                ⏹️ Stop
+            </button>
+            <button class="btn btn-warning" onclick="restartService('{{ service_id }}')">
+                🔄 Restart
+            </button>
+            <button class="btn btn-secondary" onclick="toggleServiceLogs('{{ service_id }}')">
+                📋 Logs
+            </button>
+        </div>
+        
+        <!-- Logs Viewer -->
+        <div class="service-logs-container" id="logs-{{ service_id }}" style="display: none;">
+            <div class="logs-header">
+                <h4>Logs für {{ service.name }}</h4>
+                <button class="btn btn-sm btn-secondary" onclick="toggleServiceLogs('{{ service_id }}')">
+                    Schließen
+                </button>
+            </div>
+            <div class="logs-panel" id="logs-content-{{ service_id }}">
+                <div class="log-entry log-info">Lade Logs...</div>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+    {% endif %}
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+let serviceStatuses = {};
+const currentInstanceName = '{{ instance_name }}';
+
+// Initialize
+async function initializeServices() {
+    await updateAllServices();
+    setInterval(updateAllServices, 2000);
+}
+
+// Update all services
+async function updateAllServices() {
+    try {
+        const result = await apiCall(`/api/status/all?instance=${encodeURIComponent(currentInstanceName)}`);
+        if (result && result.services) {
+            serviceStatuses = result.services;
+            
+            Object.entries(result.services).forEach(([serviceId, status]) => {
+                updateServiceCard(serviceId, status);
+            });
+
+            if (result.instance_meta) {
+                updateInstanceMeta(result.instance_meta);
+            }
+        }
+    } catch (error) {
+        console.error('Error updating services:', error);
+    }
+}
+
+function updateInstanceMeta(meta) {
+    const hostCpu = Number(meta.host_cpu_percent || 0);
+    const serviceCpu = Number(meta.service_cpu_percent || 0);
+    const serviceCpuMax = Number(meta.service_cpu_percent_max || 0);
+    const serviceRam = Number(meta.service_memory_mb || 0);
+    const runningServices = Number(meta.running_services || 0);
+    const totalServices = Number(meta.total_services || 0);
+
+    const gpu = meta.gpu || {};
+    const gpuUtil = Number(gpu.utilization_percent || 0);
+    const gpuAvailable = !!gpu.available;
+    const gpuMemUsed = Number(gpu.memory_used_mb || 0);
+    const gpuMemTotal = Number(gpu.memory_total_mb || 0);
+
+    const network = meta.network || {};
+    const downBps = Number(network.download_bps || 0);
+    const upBps = Number(network.upload_bps || 0);
+
+    document.getElementById('inst-host-cpu').textContent = `${hostCpu.toFixed(1)}%`;
+    document.getElementById('inst-service-cpu').textContent = `${serviceCpu.toFixed(1)}%`;
+    document.getElementById('inst-service-ram').textContent = `max ${serviceCpuMax.toFixed(1)}% · ${serviceRam.toFixed(0)} MB · ${runningServices}/${totalServices} aktiv`;
+
+    document.getElementById('inst-gpu').textContent = `${gpuUtil.toFixed(1)}%`;
+    document.getElementById('inst-gpu-mem').textContent = gpuAvailable
+        ? `${gpuMemUsed.toFixed(0)} / ${gpuMemTotal.toFixed(0)} MB`
+        : 'GPU nicht verfügbar';
+
+    document.getElementById('inst-net').textContent = `↓ ${formatBytesPerSecond(downBps)}`;
+    document.getElementById('inst-net-up').textContent = `↑ ${formatBytesPerSecond(upBps)}`;
+}
+
+// Update service card
+function updateServiceCard(serviceId, status) {
+    const card = document.querySelector(`[data-service="${serviceId}"]`);
+    if (!card) return;
+    
+    const isRunning = status.status === 'running';
+    const badge = card.querySelector(`#badge-${serviceId}`);
+    
+    // Update status badge
+    badge.textContent = isRunning ? '✅ Läuft' : '❌ Gestoppt';
+    badge.className = `status-badge ${isRunning ? 'status-running' : 'status-stopped'}`;
+    
+    // Update stats
+    const cpu = Number(status.cpu || 0);
+    const ram = Number(status.memory || 0);
+    const gpu = Number(status.gpu || 0);
+    const gpuMem = Number(status.gpu_memory_mb || 0);
+    const gpuAvailable = !!status.gpu_available;
+
+    card.querySelector(`#cpu-${serviceId}`).textContent = cpu.toFixed(1) + '%';
+    card.querySelector(`#ram-${serviceId}`).textContent = ram.toFixed(0) + ' MB';
+    card.querySelector(`#gpu-${serviceId}`).textContent = gpuAvailable
+        ? `${gpu.toFixed(1)}%`
+        : '--';
+    card.querySelector(`#pid-${serviceId}`).textContent = status.pid || '--';
+
+    const uptimeSeconds = Number(
+        status.uptime_seconds ?? status.uptime ?? 0
+    );
+    if (!Number.isFinite(uptimeSeconds) || uptimeSeconds <= 0) {
+        card.querySelector(`#uptime-${serviceId}`).textContent = status.uptime_text || '--';
+    } else {
+        card.querySelector(`#uptime-${serviceId}`).textContent = formatUptime(uptimeSeconds);
+    }
+}
+
+// Start service
+async function startService(serviceId) {
+    showNotification(`Starte ${serviceId}...`, 'info');
+    try {
+        const result = await apiCall(`/api/service/${currentInstanceName}/${serviceId}/start`, { method: 'POST' });
+        if (result && result.success) {
+            showNotification(`✅ ${serviceId} gestartet`, 'success');
+            await updateAllServices();
+        } else {
+            showNotification(`❌ Fehler: ${result.error || 'Unknown error'}`, 'error');
+        }
+    } catch (error) {
+        if ((error.message || '').toLowerCase().includes('already running')) {
+            showNotification(`ℹ️ ${serviceId} läuft bereits`, 'info');
+            await updateAllServices();
+            return;
+        }
+        showNotification(`❌ ${error.message}`, 'error');
+    }
+}
+
+// Stop service
+async function stopService(serviceId) {
+    showNotification(`Stoppe ${serviceId}...`, 'info');
+    try {
+        const result = await apiCall(`/api/service/${currentInstanceName}/${serviceId}/stop`, { method: 'POST' });
+        if (result && result.success) {
+            showNotification(`✅ ${serviceId} gestoppt`, 'success');
+            await updateAllServices();
+        } else {
+            showNotification(`❌ Fehler: ${result.error || 'Unknown error'}`, 'error');
+        }
+    } catch (error) {
+        if ((error.message || '').toLowerCase().includes('not found')) {
+            showNotification(`ℹ️ ${serviceId} ist bereits gestoppt`, 'info');
+            await updateAllServices();
+            return;
+        }
+        showNotification(`❌ ${error.message}`, 'error');
+    }
+}
+
+// Restart service
+async function restartService(serviceId) {
+    showNotification(`Neustarte ${serviceId}...`, 'info');
+    try {
+        // Stop then start
+        await stopService(serviceId);
+        await new Promise(r => setTimeout(r, 1000));
+        await startService(serviceId);
+    } catch (error) {
+        showNotification(`❌ ${error.message}`, 'error');
+    }
+}
+
+// Force-start service (kill listeners on configured port first)
+async function forceStartService(serviceId) {
+    showNotification(`Erzwungener Start für ${serviceId}...`, 'warning');
+    try {
+        const result = await apiCall(`/api/service/${currentInstanceName}/${serviceId}/force-start`, { method: 'POST' });
+        if (result && result.success) {
+            const forceInfo = result.force_start || {};
+            const killed = (forceInfo.killed_pids || []).length;
+            const extra = killed > 0 ? ` (Port-Prozesse beendet: ${killed})` : '';
+            showNotification(`✅ ${serviceId} erzwungen gestartet${extra}`, 'success');
+            await updateAllServices();
+        } else {
+            showNotification(`❌ Fehler: ${result.error || 'Unknown error'}`, 'error');
+        }
+    } catch (error) {
+        showNotification(`❌ ${error.message}`, 'error');
+    }
+}
+
+// Start all services
+async function startAllServices() {
+    showNotification('Starte alle Services...', 'info');
+    try {
+        const result = await apiCall(`/api/instance/start/${currentInstanceName}`, { method: 'POST' });
+        if (result && result.success) {
+            showNotification(`✅ ${result.started.length} Services gestartet`, 'success');
+            await updateAllServices();
+        } else {
+            showNotification('❌ Fehler beim Starten', 'error');
+        }
+    } catch (error) {
+        showNotification(`❌ ${error.message}`, 'error');
+    }
+}
+
+// Stop all services
+async function stopAllServices() {
+    if (!confirm('Alle Services stoppen?')) return;
+    
+    showNotification('Stoppe alle Services...', 'warning');
+    try {
+        const result = await apiCall(`/api/instance/stop/${currentInstanceName}`, { method: 'POST' });
+        if (result && result.success) {
+            showNotification(`✅ ${result.stopped.length} Services gestoppt`, 'success');
+            await updateAllServices();
+        } else {
+            showNotification('❌ Fehler beim Stoppen', 'error');
+        }
+    } catch (error) {
+        showNotification(`❌ ${error.message}`, 'error');
+    }
+}
+
+// Toggle service logs
+async function toggleServiceLogs(serviceId) {
+    const logsContainer = document.getElementById(`logs-${serviceId}`);
+    const isHidden = logsContainer.style.display === 'none';
+    
+    if (isHidden) {
+        logsContainer.style.display = 'block';
+        await loadServiceLogs(serviceId);
+    } else {
+        logsContainer.style.display = 'none';
+    }
+}
+
+// Load service logs
+async function loadServiceLogs(serviceId) {
+    const contentDiv = document.getElementById(`logs-content-${serviceId}`);
+    contentDiv.innerHTML = '<div class="log-entry log-info">Lade Logs...</div>';
+    
+    try {
+        const logs = await getServiceLogs(serviceId, 100);
+        displayLogs(contentDiv, logs);
+    } catch (error) {
+        contentDiv.innerHTML = `<div class="log-entry log-error">Fehler: ${error.message}</div>`;
+    }
+}
+
+// Display logs
+function displayLogs(container, logs) {
+    if (!logs || logs.trim() === '') {
+        container.innerHTML = '<div class="log-entry log-info">Keine Logs verfügbar</div>';
+        return;
+    }
+    
+    const logLines = logs.split('\n').filter(l => l.trim());
+    container.innerHTML = logLines.slice(-50).map((line) => {
+        let level = 'info';
+        if (line.includes('ERROR') || line.includes('error')) level = 'error';
+        else if (line.includes('WARNING') || line.includes('warning')) level = 'warning';
+        else if (line.includes('SUCCESS') || line.includes('success')) level = 'success';
+        return `<div class="log-entry log-${level}">${escapeHtml(line)}</div>`;
+    }).join('');
+    
+    container.scrollTop = container.scrollHeight;
+}
+
+// Update service config
+async function updateServiceConfig(serviceId, configKey, value) {
+    try {
+        const result = await apiCall(`/api/instance/${currentInstanceName}/service/${serviceId}/${configKey}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ value }) });
+        if (result && result.success) {
+            showNotification('✅ Konfiguration gespeichert', 'success');
+        } else {
+            showNotification('❌ Fehler beim Speichern', 'error');
+        }
+    } catch (error) {
+        showNotification(`❌ ${error.message}`, 'error');
+    }
+}
+
+// Switch instance
+function switchToInstance(instanceName) {
+    if (instanceName) {
+        location.href = `/instance/${instanceName}/services`;
+    }
+}
+
+// Format uptime
+function formatUptime(seconds) {
+    const safeSeconds = Number(seconds || 0);
+    if (!Number.isFinite(safeSeconds) || safeSeconds <= 0) return '--';
+    const hours = Math.floor(safeSeconds / 3600);
+    const minutes = Math.floor((safeSeconds % 3600) / 60);
+    const secs = Math.floor(safeSeconds % 60);
+    if (hours > 0) return `${hours}h ${minutes}m`;
+    if (minutes > 0) return `${minutes}m ${secs}s`;
+    return `${secs}s`;
+}
+
+function formatBytesPerSecond(bytes) {
+    const value = Number(bytes || 0);
+    if (value <= 0) return '0 B/s';
+    const units = ['B/s', 'KB/s', 'MB/s', 'GB/s'];
+    let size = value;
+    let unitIndex = 0;
+    while (size >= 1024 && unitIndex < units.length - 1) {
+        size /= 1024;
+        unitIndex++;
+    }
+    return `${size.toFixed(1)} ${units[unitIndex]}`;
+}
+
+// Escape HTML
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+document.addEventListener('DOMContentLoaded', initializeServices);
+</script>
+{% endblock %}

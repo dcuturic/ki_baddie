@@ -1,0 +1,355 @@
+{% extends "base.html" %}
+
+{% block page_title %}{{ instance.name }} - Config{% endblock %}
+{% block page_subtitle %}Service-Konfigurationen für diese Instanz bearbeiten{% endblock %}
+
+{% block page_actions %}
+<div style="display: flex; gap: 1rem; align-items: center;">
+    <select id="instanceSwitcher" onchange="switchToInstance(this.value)" style="padding: 0.75rem 1rem; border-radius: 6px; border: 2px solid var(--accent-primary); background: var(--bg-secondary); color: var(--text-primary); cursor: pointer;">
+        <option value="">-- Instanz wechseln --</option>
+        {% for inst in instances %}
+        <option value="{{ inst.filename }}" {% if inst.filename == instance_name %}selected{% endif %}>
+            {{ inst.name }}
+        </option>
+        {% endfor %}
+    </select>
+    <a href="/instance/{{ instance_name }}/dashboard" class="btn btn-secondary">📊 Dashboard</a>
+    <a href="/instance/{{ instance_name }}/services" class="btn btn-secondary">⚙️ Services</a>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="configs-layout">
+    <div class="config-selector">
+        <h3>Services der Instanz</h3>
+        <div class="config-list">
+            {% if services|length == 0 %}
+            <div class="config-item active">
+                <span class="config-icon">❌</span>
+                <span class="config-name">Keine Services konfiguriert</span>
+            </div>
+            {% else %}
+            {% for service_id, service in services.items() %}
+            <div class="config-item {% if loop.first %}active{% endif %}" onclick="selectService('{{ service_id }}', event)">
+                <span class="config-icon">{{ service.icon or '⚙️' }}</span>
+                <span class="config-name">{{ service.name or service_id }}</span>
+            </div>
+            {% endfor %}
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="config-editor">
+        <div class="editor-header">
+            <h3 id="editor-title">Service Config</h3>
+            <div class="editor-actions">
+                <div style="display:flex;gap:0.3rem;margin-right:1rem;">
+                    <button id="btn-ic-mode-simple" class="btn btn-primary" onclick="switchICMode('simple')">Simple</button>
+                    <button id="btn-ic-mode-expert" class="btn btn-secondary" onclick="switchICMode('expert')">Expert</button>
+                </div>
+                <button class="btn btn-secondary" onclick="reloadCurrentServiceConfig()">🔄 Neu laden</button>
+                <button class="btn btn-success" onclick="saveCurrentServiceConfig()">💾 Speichern</button>
+            </div>
+        </div>
+
+        <div id="ic-simple-container" class="editor-body" style="padding:1rem;overflow-y:auto;"></div>
+
+        <div class="editor-body">
+            <textarea id="config-editor" class="code-editor" spellcheck="false"></textarea>
+        </div>
+
+        <div class="editor-footer">
+            <div class="editor-info">
+                <span class="info-item"><strong>Service:</strong> <code id="service-id">--</code></span>
+                <span class="info-item"><strong>Pfad:</strong> <code id="config-path">--</code></span>
+                <span class="info-item"><strong>Zeilen:</strong> <span id="line-count">0</span></span>
+                <span class="info-item"><strong>Größe:</strong> <span id="file-size">0 KB</span></span>
+            </div>
+        </div>
+    </div>
+
+    <div class="config-info">
+        <h3>Validierung</h3>
+
+        <div class="info-section">
+            <h4>JSON Status</h4>
+            <div id="validation-status" class="status-ok">✅ Gültiges JSON</div>
+        </div>
+
+        <div class="info-section">
+            <h4>Top Keys</h4>
+            <div id="config-params" class="params-list"></div>
+        </div>
+
+        <div class="info-section">
+            <h4>Hinweis</h4>
+            <div class="changes-info">
+                <p class="info-text">⚠️ Nach Config-Änderung betroffenen Service neu starten.</p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const currentInstanceName = '{{ instance_name }}';
+let currentServiceId = null;
+let icMode = 'simple';  // 'simple' or 'expert'
+let icCurrentConfig = {};  // parsed config for current service
+var usedAudioRegistry = {};  // audio conflict registry
+
+async function initializeInstanceConfig() {
+    const editor = document.getElementById('config-editor');
+    editor.addEventListener('input', () => {
+        validateConfigJSON();
+        updateEditorInfo();
+    });
+
+    // Load audio devices for Simple mode dropdowns
+    await loadAudioDevices();
+
+    // Load audio conflict registry
+    try {
+        const preview = await apiCall('/api/instance/configs/preview', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                services: {{ (instance.services or {})|tojson }},
+                editing_instance: currentInstanceName
+            })
+        });
+        usedAudioRegistry = preview.used_audio || {};
+    } catch (e) {
+        console.warn('Could not load audio registry:', e);
+    }
+
+    const firstServiceItem = document.querySelector('.config-item[onclick*="selectService"]');
+    if (firstServiceItem) {
+        const onclickValue = firstServiceItem.getAttribute('onclick') || '';
+        const match = onclickValue.match(/selectService\('([^']+)'/);
+        if (match && match[1]) {
+            await loadServiceConfig(match[1], firstServiceItem);
+        }
+    }
+}
+
+async function selectService(serviceId, event) {
+    const clickedItem = event && event.currentTarget ? event.currentTarget : null;
+    await loadServiceConfig(serviceId, clickedItem);
+}
+
+async function loadServiceConfig(serviceId, selectedElement = null) {
+    if (!serviceId) return;
+
+    if (!confirmDiscardChanges()) return;
+
+    document.querySelectorAll('.config-item').forEach(item => item.classList.remove('active'));
+    if (selectedElement) selectedElement.classList.add('active');
+
+    try {
+        const result = await apiCall(`/api/instance/${encodeURIComponent(currentInstanceName)}/config/service/${encodeURIComponent(serviceId)}`);
+        const cfg = result.config || {};
+
+        currentServiceId = serviceId;
+        icCurrentConfig = JSON.parse(JSON.stringify(cfg));  // deep copy
+        document.getElementById('service-id').textContent = serviceId;
+        document.getElementById('config-path').textContent = result.config_path || '--';
+        document.getElementById('editor-title').textContent = `${serviceId} Config`;
+        document.getElementById('config-editor').value = JSON.stringify(cfg, null, 2);
+
+        updateEditorInfo();
+        validateConfigJSON();
+        switchICMode(icMode);  // refresh current mode view
+    } catch (error) {
+        showNotification(`❌ ${error.message}`, 'error');
+    }
+}
+
+function switchICMode(mode) {
+    icMode = mode;
+    const btnSimple = document.getElementById('btn-ic-mode-simple');
+    const btnExpert = document.getElementById('btn-ic-mode-expert');
+    const simpleContainer = document.getElementById('ic-simple-container');
+    const editorBody = simpleContainer.nextElementSibling;  // textarea parent
+
+    if (mode === 'simple') {
+        btnSimple.className = 'btn btn-primary';
+        btnExpert.className = 'btn btn-secondary';
+        simpleContainer.style.display = '';
+        editorBody.style.display = 'none';
+        renderICSimple();
+    } else {
+        btnSimple.className = 'btn btn-secondary';
+        btnExpert.className = 'btn btn-primary';
+        simpleContainer.style.display = 'none';
+        editorBody.style.display = '';
+        // Sync icCurrentConfig -> textarea
+        document.getElementById('config-editor').value = JSON.stringify(icCurrentConfig, null, 2);
+        updateEditorInfo();
+        validateConfigJSON();
+    }
+}
+
+function setAudioMode(serviceId, mode) {
+    audioModePerService[serviceId] = mode;
+    if (mode === 'virtual' && currentInstanceName) {
+        handleVirtualAudioAssignment(currentInstanceName).then(assignment => {
+            if (assignment) {
+                // Auto-fill the current service's audio field
+                if (currentServiceId === 'main_server') {
+                    setNestedValue(icCurrentConfig, 'microphone.device_name', assignment.read_from);
+                } else if (currentServiceId === 'text_to_speech') {
+                    setNestedValue(icCurrentConfig, 'voicemod.output_name_substring', assignment.write_to);
+                }
+                document.getElementById('config-editor').value = JSON.stringify(icCurrentConfig, null, 2);
+            }
+            renderICSimple();
+        });
+    }
+    renderICSimple();
+}
+
+function renderICSimple() {
+    const container = document.getElementById('ic-simple-container');
+    if (!container || !currentServiceId) return;
+
+    const fieldsHtml = buildSimpleFieldsHtml(currentServiceId, icCurrentConfig, {
+        usedAudioRegistry: usedAudioRegistry,
+        allConfigs: {},
+        onChangeCallback: 'icSimpleFieldChanged',
+        getConflicts: null,
+        instanceName: currentInstanceName,
+    });
+
+    container.innerHTML = fieldsHtml || '<p style="color:var(--text-muted);">Keine Simple-Felder für diesen Service definiert.</p>';
+}
+
+function icSimpleFieldChanged(serviceId, path, value, type) {
+    if (type === 'number') value = Number(value);
+    if (type === 'bool') value = Boolean(value);
+
+    setNestedValue(icCurrentConfig, path, value);
+    // Sync to textarea
+    document.getElementById('config-editor').value = JSON.stringify(icCurrentConfig, null, 2);
+    updateEditorInfo();
+    validateConfigJSON();
+    renderICSimple();
+}
+
+function icSimpleFieldChanged_multi(serviceId, path, fieldId) {
+    const values = collectMultiSelectValues(fieldId);
+    setNestedValue(icCurrentConfig, path, values);
+    // Sync to textarea
+    document.getElementById('config-editor').value = JSON.stringify(icCurrentConfig, null, 2);
+    updateEditorInfo();
+    validateConfigJSON();
+}
+
+function confirmDiscardChanges() {
+    if (!currentServiceId) return true;
+    if (icMode === 'simple') return true;  // Simple mode is always in sync
+
+    const editor = document.getElementById('config-editor');
+    if (!editor || !editor.value) return true;
+
+    try {
+        JSON.parse(editor.value);
+        return true;
+    } catch {
+        return confirm('Editor enthält ungültiges JSON. Trotzdem wechseln?');
+    }
+}
+
+async function reloadCurrentServiceConfig() {
+    if (!currentServiceId) return;
+    const active = document.querySelector('.config-item.active');
+    await loadServiceConfig(currentServiceId, active);
+}
+
+async function saveCurrentServiceConfig() {
+    if (!currentServiceId) {
+        showNotification('❌ Kein Service ausgewählt', 'error');
+        return;
+    }
+
+    let parsed;
+    if (icMode === 'simple') {
+        parsed = icCurrentConfig;
+    } else {
+        const editor = document.getElementById('config-editor');
+        try {
+            parsed = JSON.parse(editor.value);
+        } catch (e) {
+            showNotification(`❌ Ungültiges JSON: ${e.message}`, 'error');
+            return;
+        }
+    }
+
+    try {
+        const result = await apiCall(`/api/instance/${encodeURIComponent(currentInstanceName)}/config/service/${encodeURIComponent(currentServiceId)}/save`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(parsed)
+        });
+
+        if (result && result.success) {
+            showNotification(`✅ ${currentServiceId} Config gespeichert`, 'success');
+            icCurrentConfig = JSON.parse(JSON.stringify(parsed));  // sync
+        } else {
+            showNotification(`❌ ${result.error || 'Speichern fehlgeschlagen'}`, 'error');
+        }
+    } catch (error) {
+        showNotification(`❌ ${error.message}`, 'error');
+    }
+}
+
+function validateConfigJSON() {
+    const editor = document.getElementById('config-editor');
+    const statusEl = document.getElementById('validation-status');
+    const paramsEl = document.getElementById('config-params');
+
+    if (!editor || !statusEl || !paramsEl) return;
+
+    try {
+        const parsed = JSON.parse(editor.value || '{}');
+        statusEl.className = 'status-ok';
+        statusEl.textContent = '✅ Gültiges JSON';
+
+        const keys = Object.keys(parsed).slice(0, 10);
+        paramsEl.innerHTML = keys.length
+            ? keys.map(key => `<div class="param-item"><strong>${escapeHtml(key)}:</strong> <code>${typeof parsed[key]}</code></div>`).join('')
+            : '<div class="param-item">Keine Keys vorhanden</div>';
+    } catch (e) {
+        statusEl.className = 'status-error';
+        statusEl.textContent = `❌ ${e.message}`;
+        paramsEl.innerHTML = '<div class="param-item" style="color: var(--accent-danger);">JSON-Fehler beheben!</div>';
+    }
+}
+
+function updateEditorInfo() {
+    const editor = document.getElementById('config-editor');
+    if (!editor) return;
+
+    const lines = editor.value.split('\n').length;
+    const sizeKb = (new Blob([editor.value]).size / 1024).toFixed(2);
+
+    document.getElementById('line-count').textContent = lines;
+    document.getElementById('file-size').textContent = `${sizeKb} KB`;
+}
+
+function switchToInstance(instanceName) {
+    if (instanceName) {
+        location.href = `/instance/${encodeURIComponent(instanceName)}/config`;
+    }
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+document.addEventListener('DOMContentLoaded', initializeInstanceConfig);
+</script>
+{% endblock %}

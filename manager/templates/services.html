@@ -1,0 +1,301 @@
+{% extends "base.html" %}
+
+{% block page_title %}System Services{% endblock %}
+{% block page_subtitle %}Verwaltung der Instanz-Services{% endblock %}
+
+{% block content %}
+<!-- Instance Selector & Info -->
+<div class="instance-selector-card">
+    <div class="instance-selector-header">
+        <h2>🎯 Aktive Instanz</h2>
+        <select class="instance-dropdown" id="instanceDropdown" onchange="switchInstance(this.value)">
+            <option value="">-- Instanz wechseln --</option>
+            {% for inst in instances %}
+            <option value="{{ inst.filename }}" {% if inst.filename == current_instance_name %}selected{% endif %}>
+                {{ inst.name }} {% if inst.filename == current_instance_name %}(aktiv){% endif %}
+            </option>
+            {% endfor %}
+        </select>
+    </div>
+    
+    <div class="instance-info">
+        <div class="instance-name-section">
+            <h3>{{ current_instance.name }}</h3>
+            <p class="instance-description">{{ current_instance.description or 'Keine Beschreibung' }}</p>
+        </div>
+        
+        <div class="instance-buttons">
+            <button class="btn btn-success btn-large" onclick="startInstance('{{ current_instance_name }}')">
+                ▶️ Instanz Starten
+            </button>
+            <button class="btn btn-danger btn-large" onclick="stopInstance('{{ current_instance_name }}')">
+                ⏹️ Instanz Stoppen
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Services Grid -->
+<div class="services-container">
+    <div class="services-header">
+        <h2>📦 Services ({{ services|length }})</h2>
+        <div class="services-quick-actions">
+            <button class="btn btn-sm btn-secondary" onclick="refreshServices()">🔄 Refresh</button>
+        </div>
+    </div>
+    
+    {% if services|length == 0 %}
+    <div class="empty-state">
+        <p>❌ Keine Services in dieser Instanz konfiguriert</p>
+        <p class="small">Gehe zu Instanzen um Services hinzuzufügen</p>
+    </div>
+    {% else %}
+    <div class="services-grid">
+        {% for service_id, service in services.items() %}
+        <div class="service-card" data-service="{{ service_id }}">
+            <!-- Header with Icon and Name -->
+            <div class="service-card-header">
+                <div class="service-icon" style="color: {{ service.color }}">
+                    {{ service.icon }}
+                </div>
+                <div class="service-name-section">
+                    <h4>{{ service.name }}</h4>
+                    <small class="service-id">{{ service_id }}</small>
+                </div>
+                <span class="status-indicator" data-status="unknown">●</span>
+            </div>
+            
+            <!-- Status Badge -->
+            <div class="status-section">
+                <span class="status-badge status-unknown" id="status-{{ service_id }}">Unbekannt</span>
+            </div>
+            
+            <!-- Quick Stats -->
+            <div class="service-stats-mini">
+                <div class="stat-mini">
+                    <span class="stat-label">PID:</span>
+                    <span class="stat-value" id="pid-{{ service_id }}">--</span>
+                </div>
+                <div class="stat-mini">
+                    <span class="stat-label">CPU:</span>
+                    <span class="stat-value" id="cpu-{{ service_id }}">0%</span>
+                </div>
+                <div class="stat-mini">
+                    <span class="stat-label">RAM:</span>
+                    <span class="stat-value" id="ram-{{ service_id }}">0 MB</span>
+                </div>
+                <div class="stat-mini">
+                    <span class="stat-label">Uptime:</span>
+                    <span class="stat-value" id="uptime-{{ service_id }}">--</span>
+                </div>
+            </div>
+            
+            <!-- Control Buttons -->
+            <div class="service-controls">
+                <button class="btn btn-success btn-full" onclick="startService('{{ service_id }}')">
+                    ▶️ Start
+                </button>
+                <button class="btn btn-danger btn-full" onclick="stopService('{{ service_id }}')">
+                    ⏹️ Stop
+                </button>
+                <button class="btn btn-secondary btn-full" onclick="restartService('{{ service_id }}')">
+                    🔄 Restart
+                </button>
+            </div>
+            
+            <!-- Service Info -->
+            <div class="service-info-footer">
+                <small class="info-text">
+                    <strong>Type:</strong> {{ service.type }} | 
+                    <strong>Path:</strong> {{ service.path }}
+                </small>
+            </div>
+            
+            <!-- Auto-Start Badge -->
+            {% if service_config and service_config[service_id] and service_config[service_id].get('auto_start') %}
+            <div class="auto-start-badge">🚀 Auto-Start</div>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+</div>
+
+<!-- Logs Viewer (Optional Expandable) -->
+{% if services|length > 0 %}
+<div class="logs-viewer">
+    <div class="logs-header">
+        <h3>📋 Service Logs</h3>
+        <button class="btn btn-sm btn-secondary" onclick="toggleLogsPanel()">
+            <span id="logsToggleText">▼ Minimieren</span>
+        </button>
+    </div>
+    <div class="logs-panel" id="logsPanel">
+        <div class="logs-service-selector">
+            <label>Service auswählen:</label>
+            <select id="logServiceSelector" onchange="showServiceLogs(this.value)">
+                <option value="">-- Wähle einen Service --</option>
+                {% for service_id in services.keys() %}
+                <option value="{{ service_id }}">{{ services[service_id].name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="logs-content" id="logsContent">
+            <div class="log-entry log-info">Wähle einen Service um Logs zu sehen</div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{% block scripts %}
+<script>
+let serviceStatuses = {};
+let logsExpanded = true;
+
+// Initial load
+async function initializeServices() {
+    await updateAllServices();
+    // Auto-update every 2 seconds
+    setInterval(updateAllServices, 2000);
+}
+
+// Update all service statuses
+async function updateAllServices() {
+    try {
+        const statuses = await getServicesStatus();
+        serviceStatuses = statuses;
+        
+        Object.entries(statuses).forEach(([serviceId, status]) => {
+            updateServiceCard(serviceId, status);
+        });
+    } catch (error) {
+        console.error('Error updating services:', error);
+    }
+}
+
+// Update a single service card
+function updateServiceCard(serviceId, status) {
+    const card = document.querySelector(`[data-service="${serviceId}"]`);
+    if (!card) return;
+    
+    const isRunning = status.status === 'running';
+    
+    // Update status badge
+    const statusBadge = card.querySelector(`#status-${serviceId}`);
+    const indicator = card.querySelector('.status-indicator');
+    
+    statusBadge.className = `status-badge ${isRunning ? 'status-running' : 'status-stopped'}`;
+    statusBadge.textContent = isRunning ? '✅ Läuft' : '❌ Gestoppt';
+    
+    indicator.className = `status-indicator ${isRunning ? 'running' : 'stopped'}`;
+    indicator.setAttribute('data-status', isRunning ? 'running' : 'stopped');
+    
+    // Update stats
+    document.getElementById(`pid-${serviceId}`).textContent = status.pid || '--';
+    document.getElementById(`cpu-${serviceId}`).textContent = (status.cpu || 0).toFixed(1) + '%';
+    document.getElementById(`ram-${serviceId}`).textContent = (status.memory || 0).toFixed(0) + ' MB';
+    document.getElementById(`uptime-${serviceId}`).textContent = status.uptime 
+        ? formatUptime(status.uptime) 
+        : '--';
+}
+
+// Format uptime nicely
+function formatUptime(seconds) {
+    if (!seconds) return '--';
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    if (hours > 0) return `${hours}h ${minutes}m`;
+    return `${minutes}m`;
+}
+
+// Switch instance
+async function switchInstance(instanceName) {
+    if (!instanceName) return;
+    
+    try {
+        const result = await apiCall(`/api/instance/set-current/${instanceName}`, {}, 'POST');
+        if (result && result.success) {
+            showNotification(`Instanz gewechselt: ${result.instance.name}`, 'success');
+            setTimeout(() => location.reload(), 500);
+        } else {
+            showNotification('Fehler beim Instanzwechsel', 'error');
+        }
+    } catch (error) {
+        console.error('Error switching instance:', error);
+        showNotification('Fehler: ' + error.message, 'error');
+    }
+}
+
+// Refresh services
+async function refreshServices() {
+    showNotification('Services werden aktualisiert...', 'info');
+    await updateAllServices();
+    showNotification('Services aktualisiert', 'success');
+}
+
+// Show service logs
+async function showServiceLogs(serviceId) {
+    if (!serviceId) {
+        document.getElementById('logsContent').innerHTML = 
+            '<div class="log-entry log-info">Wähle einen Service um Logs zu sehen</div>';
+        return;
+    }
+    
+    try {
+        const logs = await getServiceLogs(serviceId, 100);
+        displayLogs(logs);
+    } catch (error) {
+        console.error('Error loading logs:', error);
+        document.getElementById('logsContent').innerHTML = 
+            `<div class="log-entry log-error">Fehler beim Laden der Logs: ${error.message}</div>`;
+    }
+}
+
+// Display logs
+function displayLogs(logs) {
+    const container = document.getElementById('logsContent');
+    
+    if (!logs || logs.trim() === '') {
+        container.innerHTML = '<div class="log-entry log-info">Keine Logs verfügbar</div>';
+        return;
+    }
+    
+    const logLines = logs.split('\n').filter(l => l.trim());
+    container.innerHTML = logLines.slice(-50).map((line) => {
+        let level = 'info';
+        if (line.includes('ERROR') || line.includes('error')) level = 'error';
+        else if (line.includes('WARNING') || line.includes('warning')) level = 'warning';
+        else if (line.includes('SUCCESS') || line.includes('success')) level = 'success';
+        return `<div class="log-entry log-${level}">${escapeHtml(line)}</div>`;
+    }).join('');
+    
+    // Auto scroll to bottom
+    container.scrollTop = container.scrollHeight;
+}
+
+// Toggle logs panel
+function toggleLogsPanel() {
+    const panel = document.getElementById('logsPanel');
+    const text = document.getElementById('logsToggleText');
+    logsExpanded = !logsExpanded;
+    
+    if (logsExpanded) {
+        panel.style.display = 'block';
+        text.textContent = '▼ Minimieren';
+    } else {
+        panel.style.display = 'none';
+        text.textContent = '▶ Erweitern';
+    }
+}
+
+// Helper to escape HTML
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+// Initialize on load
+document.addEventListener('DOMContentLoaded', initializeServices);
+</script>
+{% endblock %}

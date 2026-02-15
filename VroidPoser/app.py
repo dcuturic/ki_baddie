@@ -13,37 +13,65 @@ from osc4py3 import oscbuildparse
 
 app = Flask(__name__)
 
-POSES_DIR = "api_used/poses/default"
-MOVES_DIR = "api_used/moves/default"
-FIGHT_POSE = "api_used/poses/default/fight"
-RES_DIR = "Resources"
+# ======================= CONFIG LOADER =======================
 
-JOY_RANGE = 80
-DEFAULT_SPEED = 2.9
+CONFIG_PATH = "config.json"
+CONFIG: Dict = {}
 
-POSE_EXTS = (".txt", ".json")
+def load_config() -> Dict:
+    """Load global config from JSON file"""
+    if not os.path.exists(CONFIG_PATH):
+        print(f"Warning: {CONFIG_PATH} not found, using defaults")
+        return {}
+    
+    try:
+        with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception as e:
+        print(f"Error loading config: {e}")
+        return {}
+
+CONFIG = load_config()
+
+# ======================= CONFIG VALUES =======================
+
+dirs = CONFIG.get("directories", {})
+POSES_DIR = dirs.get("poses", "api_used/poses/default")
+MOVES_DIR = dirs.get("moves", "api_used/moves/default")
+FIGHT_POSE = dirs.get("fight_pose", "api_used/poses/default/fight")
+RES_DIR = dirs.get("resources", "Resources")
+
+anim = CONFIG.get("animation", {})
+JOY_RANGE = anim.get("joy_range", 80)
+DEFAULT_SPEED = anim.get("default_speed", 2.9)
+
+pose_exts_list = anim.get("pose_extensions", [".txt", ".json"])
+POSE_EXTS = tuple(pose_exts_list)
 
 POSE_JSON_CFG_PATH = os.path.join(RES_DIR, "pose_json_config.json")
 
-HEAD_LOOK_UP_RAD = 0.505  # ~3.4°; erhöhe z.B. 0.08..0.12 wenn nötig
-NECK_LOOK_UP_RAD = 0.5
+head_rot = CONFIG.get("head_rotation", {})
+HEAD_LOOK_UP_RAD = head_rot.get("head_look_up_rad", 0.505)
+NECK_LOOK_UP_RAD = head_rot.get("neck_look_up_rad", 0.5)
 
-IDLE_UPDATE_HZ = 30
-IDLE_TARGET_INTERVAL = (1.0, 2.0)
-IDLE_SPEED = 0.24
-IDLE_INTENSITY = 5.55
+idle = CONFIG.get("idle_motion", {})
+IDLE_UPDATE_HZ = idle.get("update_hz", 30)
+IDLE_TARGET_INTERVAL = (idle.get("target_interval_min", 1.0), idle.get("target_interval_max", 2.0))
+IDLE_SPEED = idle.get("speed", 0.24)
+IDLE_INTENSITY = idle.get("intensity", 5.55)
+IDLE_SMOOTH = idle.get("smooth", 0.02)
 
 def _ensure_resources():
     os.makedirs(RES_DIR, exist_ok=True)
 
 def _load_pose_json_cfg() -> dict:
     _ensure_resources()
-    defaults = {
+    defaults = CONFIG.get("pose_json_config", {
         "vrm_to_vmc": True,
         "use_hips_position": True,
         "swap_lr": False,
         "thumb_fix": True,
-    }
+    })
     if not os.path.exists(POSE_JSON_CFG_PATH):
         return defaults
     try:
@@ -172,7 +200,15 @@ class RuntimeState:
     idle_motion_enabled: bool = True
     idle_motion_thread_running: bool = False
 
-osc_cfg = OSCConfig()
+# Load OSC config from global config
+osc_cfg_data = CONFIG.get("osc", {})
+osc_cfg = OSCConfig(
+    enabled=osc_cfg_data.get("enabled", False),
+    ip=osc_cfg_data.get("ip", "127.0.0.1"),
+    port=osc_cfg_data.get("port", 39539),
+    client_name=osc_cfg_data.get("client_name", "VroidPoser")
+)
+
 state = RuntimeState(
     travel=[0.0, 0.0, 0.0],
     destination=[0.0, 0.0, 0.0],
@@ -328,7 +364,6 @@ def sieve(joint: str, q: float, w: float, rot: float):
         sendosc_triplet(joint, rot, q, w)
 
 IDLE_BONES = ["Spine", "Chest", "Neck", "Head"]
-IDLE_SMOOTH = 0.02
 idle_current: Dict[str, List[float]] = {b: [0.0, 0.0, 0.0, 1.0] for b in IDLE_BONES}
 
 def _send_idle_quat(bone: str, target_quat: List[float]):
@@ -436,11 +471,13 @@ def start_auto_blink():
     t = threading.Thread(target=_auto_blink_loop, daemon=True)
     t.start()
 
+# Load idle limits from config
+idle_limits_cfg = CONFIG.get("idle_limits", {})
 IDLE_LIMITS = {
-    "Head":  (0.070, 0.070, 0.095),
-    "Neck":  (0.045, 0.045, 0.065),
-    "Chest": (0.030, 0.030, 0.050),
-    "Spine": (0.020, 0.020, 0.035),
+    "Head":  tuple(idle_limits_cfg.get("Head", [0.070, 0.070, 0.095])),
+    "Neck":  tuple(idle_limits_cfg.get("Neck", [0.045, 0.045, 0.065])),
+    "Chest": tuple(idle_limits_cfg.get("Chest", [0.030, 0.030, 0.050])),
+    "Spine": tuple(idle_limits_cfg.get("Spine", [0.020, 0.020, 0.035])),
 }
 
 def _clamp(x, a, b):
@@ -1023,8 +1060,7 @@ def play_pose(name):
     state.idle_motion_enabled = True
     return jsonify({"ok": True, "playing": {"type": "pose", "name": name, "file": os.path.basename(path)}})
 
-path = os.path.join(POSES_DIR, f"idle.json")
-start_background(lambda: play_pose_file(path))
+
 
 @app.post("/play/motion/<path:name>")
 def play_motion_route(name):
@@ -1118,13 +1154,26 @@ if __name__ == "__main__":
     if not os.path.exists(POSE_JSON_CFG_PATH):
         _save_pose_json_cfg(POSE_JSON_CFG)
 
-    osc_cfg.ip = os.getenv("OSC_IP", "127.0.0.1")
-    osc_cfg.port = int(os.getenv("OSC_PORT", "39539"))
-    osc_cfg.enabled = os.getenv("OSC_ENABLED", "1") == "1"
+    # Override OSC config with environment variables if set
+    osc_cfg.ip = os.getenv("OSC_IP", osc_cfg.ip)
+    osc_cfg.port = int(os.getenv("OSC_PORT", str(osc_cfg.port)))
+    enabled_env = os.getenv("OSC_ENABLED", "")
+    if enabled_env:
+        osc_cfg.enabled = enabled_env == "1"
+    
     if osc_cfg.enabled:
         ensure_osc_started()
+    
+
+    path = os.path.join(POSES_DIR, f"idle.json")
+    start_background(lambda: play_pose_file(path))
 
     start_auto_blink()
     start_idle_motion()
 
-    app.run(host="0.0.0.0", port=5000, debug=False)
+    server_cfg = CONFIG.get("server", {})
+    app.run(
+        host=server_cfg.get("host", "0.0.0.0"),
+        port=server_cfg.get("port", 5003),
+        debug=server_cfg.get("debug", False)
+    )

@@ -5,73 +5,187 @@ import requests
 import re
 import random
 import threading
+import json
+import os
 from typing import Tuple, List, Dict, Optional
 from datetime import datetime
 from zoneinfo import ZoneInfo
+from dataclasses import dataclass
+
+# ======================= CONFIG LOADER =======================
+
+CONFIG_PATH = "config.json"
+CONFIG: Dict = {}
+
+def load_config() -> Dict:
+    """Load global config from JSON file"""
+    if not os.path.exists(CONFIG_PATH):
+        print(f"Warning: {CONFIG_PATH} not found, using defaults")
+        return {}
+    
+    try:
+        with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception as e:
+        print(f"Error loading config: {e}")
+        return {}
+
+CONFIG = load_config()
+
+# ======================= CHARACTER SYSTEM =======================
+
+@dataclass
+class Character:
+    name: str
+    db_path: str
+    model: str
+    system_prompt: str
+    self_username: str
+    thinking_rate: float
+    max_history: int
+    max_user_focus: int
+    enable_auto_memory: bool
+    enable_pervy_guard: bool
+
+CHARACTERS_DIR = CONFIG.get("characters_dir", "characters")
+CURRENT_CHARACTER: Optional[Character] = None
+
+def load_character(char_name: str) -> Optional[Character]:
+    """Load character from JSON file"""
+    char_file = os.path.join(CHARACTERS_DIR, f"{char_name.lower()}.json")
+    if not os.path.exists(char_file):
+        return None
+    
+    try:
+        with open(char_file, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        
+        return Character(
+            name=data.get("name", char_name),
+            db_path=data.get("db_path", f"memory_{char_name.lower()}.db"),
+            model=data.get("model", "deeliar-m4000-perf:latest"),
+            system_prompt=data.get("system_prompt", ""),
+            self_username=data.get("self_username", f"__{char_name.lower()}__"),
+            thinking_rate=float(data.get("thinking_rate", 0.70)),
+            max_history=int(data.get("max_history", 16)),
+            max_user_focus=int(data.get("max_user_focus", 6)),
+            enable_auto_memory=bool(data.get("enable_auto_memory", True)),
+            enable_pervy_guard=bool(data.get("enable_pervy_guard", False))
+        )
+    except Exception as e:
+        print(f"Error loading character {char_name}: {e}")
+        return None
+
+def list_characters() -> List[str]:
+    """List all available characters"""
+    if not os.path.exists(CHARACTERS_DIR):
+        os.makedirs(CHARACTERS_DIR, exist_ok=True)
+        return []
+    
+    chars = []
+    for f in os.listdir(CHARACTERS_DIR):
+        if f.endswith(".json"):
+            chars.append(f.replace(".json", ""))
+    return sorted(chars)
+
+def switch_character(char_name: str) -> bool:
+    """Switch to a different character"""
+    global CURRENT_CHARACTER
+    char = load_character(char_name)
+    if char:
+        CURRENT_CHARACTER = char
+        return True
+    return False
 
 # ======================= CONFIG =======================
 
-OLLAMA_URL = "http://localhost:11434/api/chat"
-MODEL = "deeliar-m4000-perf:latest"
-DB_PATH = "memory.db"
+OLLAMA_URL = CONFIG.get("ollama", {}).get("url", "http://localhost:11434/api/chat")
+TIMEZONE = CONFIG.get("timezone", "Europe/Berlin")
 
-TIMEZONE = "Europe/Berlin"
+# Dynamic values from CURRENT_CHARACTER
+def get_model() -> str:
+    return CURRENT_CHARACTER.model if CURRENT_CHARACTER else CONFIG.get("ollama", {}).get("default_model", "deeliar-m4000-perf:latest")
 
-MAX_HISTORY_MESSAGES = 16
-MAX_USER_FOCUS_MESSAGES = 6
+def get_db_path() -> str:
+    return CURRENT_CHARACTER.db_path if CURRENT_CHARACTER else "memory.db"
+
+def get_system_role() -> str:
+    return CURRENT_CHARACTER.system_prompt if CURRENT_CHARACTER else ""
+
+def get_self_username() -> str:
+    return CURRENT_CHARACTER.self_username if CURRENT_CHARACTER else "__dilara__"
+
+def get_thinking_rate() -> float:
+    return CURRENT_CHARACTER.thinking_rate if CURRENT_CHARACTER else 0.70
+
+def get_max_history() -> int:
+    return CURRENT_CHARACTER.max_history if CURRENT_CHARACTER else CONFIG.get("chat", {}).get("max_history", 16)
+
+def get_max_user_focus() -> int:
+    return CURRENT_CHARACTER.max_user_focus if CURRENT_CHARACTER else CONFIG.get("chat", {}).get("max_user_focus", 6)
+
+def get_enable_auto_memory() -> bool:
+    return CURRENT_CHARACTER.enable_auto_memory if CURRENT_CHARACTER else bool(CONFIG.get("chat", {}).get("enable_auto_memory", True))
+
+def get_enable_pervy_guard() -> bool:
+    return CURRENT_CHARACTER.enable_pervy_guard if CURRENT_CHARACTER else bool(CONFIG.get("chat", {}).get("enable_pervy_guard", False))
+
+MAX_HISTORY_MESSAGES = CONFIG.get("chat", {}).get("max_history", 16)
+MAX_USER_FOCUS_MESSAGES = CONFIG.get("chat", {}).get("max_user_focus", 6)
 
 # IMPORTANT: num_ctx=2048 => du kannst NICHT 1000 Erinnerungen gleichzeitig ins Prompt packen.
 # Diese Werte sind "perfekt" für 2048 Kontext: wenige, aber hochwertige + Recency + Recall.
-MAX_MEMORY_ITEMS_IN_PROMPT = 10
-MAX_GLOBAL_MEMORY_ITEMS_IN_PROMPT = 4
-MAX_SELF_MEMORY_ITEMS_IN_PROMPT = 10
-MAX_RECENT_THOUGHTS_IN_PROMPT = 12
+MAX_MEMORY_ITEMS_IN_PROMPT = CONFIG.get("memory", {}).get("max_memory_items_in_prompt", 10)
+MAX_GLOBAL_MEMORY_ITEMS_IN_PROMPT = CONFIG.get("memory", {}).get("max_global_memory_items_in_prompt", 4)
+MAX_SELF_MEMORY_ITEMS_IN_PROMPT = CONFIG.get("memory", {}).get("max_self_memory_items_in_prompt", 10)
+MAX_RECENT_THOUGHTS_IN_PROMPT = CONFIG.get("memory", {}).get("max_recent_thoughts_in_prompt", 12)
 
-MAX_REPLY_SENTENCES = 8
+MAX_REPLY_SENTENCES = CONFIG.get("chat", {}).get("max_reply_sentences", 8)
 
-ENABLE_AUTO_MEMORY = True
-ENABLE_PERVY_GUARD = True
+ENABLE_AUTO_MEMORY = bool(CONFIG.get("chat", {}).get("enable_auto_memory", True))
+ENABLE_PERVY_GUARD = bool(CONFIG.get("chat", {}).get("enable_pervy_guard", False))
 
-ACTIVE_WINDOW_SECONDS = 600
-ACTIVE_USERS_LIMIT = 12
-RECENT_USERS_LIMIT = 40
-MAX_MENTIONS = 3
+ACTIVE_WINDOW_SECONDS = CONFIG.get("chat", {}).get("active_window_seconds", 600)
+ACTIVE_USERS_LIMIT = CONFIG.get("chat", {}).get("active_users_limit", 12)
+RECENT_USERS_LIMIT = CONFIG.get("chat", {}).get("recent_users_limit", 40)
+MAX_MENTIONS = CONFIG.get("chat", {}).get("max_mentions", 3)
 
 # ======================= THINKING CONFIG =======================
 
-THINK_INTERVAL_SECONDS = 20          # realistisch, sonst DB-Spam
-DILARA_THINKING_RATE = 0.70          # 70% pro Tick -> ~1 Gedanke pro ~28s im Schnitt
+THINK_INTERVAL_SECONDS = CONFIG.get("thinking", {}).get("interval_seconds", 20)
+DILARA_THINKING_RATE = float(CONFIG.get("thinking", {}).get("rate", 0.70))
 
 # Thought scales (wichtig!)
 # intensity/identity/stability/risk sind 0..100 (intensity 1..100)
-THOUGHT_INTENSITY_THRESHOLD_LONG = 700  # nur high-intensity kann long werden (zusätzlich zu identity/stability)
-THOUGHT_INTENSITY_THRESHOLD_SHORT = 250
+THOUGHT_INTENSITY_THRESHOLD_LONG = CONFIG.get("thinking", {}).get("intensity_threshold_long", 700)
+THOUGHT_INTENSITY_THRESHOLD_SHORT = CONFIG.get("thinking", {}).get("intensity_threshold_short", 250)
 
-SHORT_THOUGHT_BASE_SECONDS = 120       # * factor (siehe decay_time)
-LONG_THOUGHT_BASE_SECONDS = 86400      # * factor
+SHORT_THOUGHT_BASE_SECONDS = CONFIG.get("thinking", {}).get("short_thought_base_seconds", 120)
+LONG_THOUGHT_BASE_SECONDS = CONFIG.get("thinking", {}).get("long_thought_base_seconds", 86400)
 
-SELF_USERNAME = "__dilara__"
+SELF_USERNAME = str(CONFIG.get("chat", {}).get("self_username", "__dilara__"))
 
 # ======================= THINK RECALL CONFIG =======================
 
-THINK_PROMPT_RECENT_THOUGHTS = 10      # STM: letzte X thoughts
-THINK_PROMPT_RELEVANT_THOUGHTS = 10    # Recall: matching
-THINK_PROMPT_LONG_THOUGHTS = 10        # LTM: top long
-THINK_PROMPT_SELF_MEMS = 10            # Self facts
+THINK_PROMPT_RECENT_THOUGHTS = CONFIG.get("thinking", {}).get("prompt_recent_thoughts", 10)
+THINK_PROMPT_RELEVANT_THOUGHTS = CONFIG.get("thinking", {}).get("prompt_relevant_thoughts", 10)
+THINK_PROMPT_LONG_THOUGHTS = CONFIG.get("thinking", {}).get("prompt_long_thoughts", 10)
+THINK_PROMPT_SELF_MEMS = CONFIG.get("thinking", {}).get("prompt_self_mems", 10)
 
 # fallback, wenn overlap 0:
-MEMORY_FALLBACK_TOPK = 8
+MEMORY_FALLBACK_TOPK = CONFIG.get("memory", {}).get("memory_fallback_topk", 8)
 
-ALLOWED_EMOTIONS = {"surprise", "angry", "sorrow", "fun", "neutral", "joy"}
+ALLOWED_EMOTIONS = set(CONFIG.get("allowed_emotions", ["surprise", "angry", "sorrow", "fun", "neutral", "joy"]))
 
-ALLOWED_THOUGHT_CATEGORIES = {
+ALLOWED_THOUGHT_CATEGORIES = set(CONFIG.get("allowed_thought_categories", [
     "beobachtung", "gefühl", "misstrauen", "bindung", "impuls", "ritual", "selbstbild"
-}
-ALLOWED_THOUGHT_EVALS = {"gut_für_mich", "neutral", "schlecht_für_mich"}
+]))
+ALLOWED_THOUGHT_EVALS = set(CONFIG.get("allowed_thought_evals", ["gut_für_mich", "neutral", "schlecht_für_mich"]))
 
-META_BANNED = [
-    # optional
-]
+META_BANNED = CONFIG.get("meta_banned", [])
+
+PERVY_KEYWORDS: List[str] = CONFIG.get("pervy_keywords", [])
+PERVY_RESPONSE = CONFIG.get("pervy_response", "ara ara nein nein, ich gehöre nur Deeliar, uwu||fun")
 
 
 SYSTEM_ROLE = """
@@ -433,11 +547,6 @@ Bewertung (genau eine):
 gut_für_mich, neutral, schlecht_für_mich
 """
 
-PERVY_RESPONSE = "ara ara nein nein, ich gehöre nur Deeliar, uwu||fun"
-PERVY_KEYWORDS: List[str] = [
-    # optional
-]
-
 # ======================= UTIL =======================
 
 def now_ts() -> int:
@@ -624,7 +733,7 @@ def extract_mentions_fuzzy(user_text: str, candidates: List[str], max_mentions: 
 
 def get_db() -> sqlite3.Connection:
     if "db" not in g:
-        con = sqlite3.connect(DB_PATH, timeout=5.0, check_same_thread=False)
+        con = sqlite3.connect(get_db_path(), timeout=5.0, check_same_thread=False)
         con.row_factory = sqlite3.Row
         con.execute("PRAGMA journal_mode=WAL;")
         con.execute("PRAGMA synchronous=NORMAL;")
@@ -657,7 +766,7 @@ def ensure_column(table: str, column: str, coldef: str) -> None:
         db_exec(f"ALTER TABLE {table} ADD COLUMN {column} {coldef}")
 
 def init_db():
-    con = sqlite3.connect(DB_PATH, timeout=5.0, check_same_thread=False)
+    con = sqlite3.connect(get_db_path(), timeout=5.0, check_same_thread=False)
     con.execute("PRAGMA journal_mode=WAL;")
     con.execute("PRAGMA synchronous=NORMAL;")
     con.execute("PRAGMA busy_timeout=5000;")
@@ -1083,7 +1192,7 @@ def get_relevant_thoughts(user_text: str, max_items: int = 10) -> List[str]:
     return out
 
 def get_self_memories_for_prompt(user_text: str, max_items: int) -> List[str]:
-    return get_user_memories_hybrid(SELF_USERNAME, user_text, max_items=max_items)
+    return get_user_memories_hybrid(get_self_username(), user_text, max_items=max_items)
 
 def derive_self_traits() -> Dict[str, int]:
     cleanup_thoughts()
@@ -1099,15 +1208,15 @@ def derive_self_traits() -> Dict[str, int]:
 
 def ollama_chat(messages: List[Dict[str, str]]) -> str:
     payload = {
-        "model": MODEL,
+        "model": get_model(),
         "messages": messages,
-        "options": {
-                        "num_ctx": 2048,
+        "options": CONFIG.get("ollama", {}).get("options", {
+            "num_ctx": 2048,
             "temperature": 0.6,
             "top_p": 0.98,
-            "repeat_penalty": 1.1, 
+            "repeat_penalty": 1.1,
             "num_batch": 1024
-        },
+        }),
         "stream": False
     }
     r = requests.post(OLLAMA_URL, json=payload, timeout=120)
@@ -1116,18 +1225,18 @@ def ollama_chat(messages: List[Dict[str, str]]) -> str:
 
 def ollama_think(prompt: str) -> str:
     payload = {
-        "model": MODEL,
+        "model": get_model(),
         "messages": [
             {"role": "system", "content": THINK_SYSTEM_ROLE.strip()},
             {"role": "user", "content": prompt.strip()},
         ],
-        "options": {
-                       "num_ctx": 2048,
+        "options": CONFIG.get("ollama", {}).get("options", {
+            "num_ctx": 2048,
             "temperature": 0.6,
             "top_p": 0.98,
-            "repeat_penalty": 1.1, 
+            "repeat_penalty": 1.1,
             "num_batch": 1024
-        },
+        }),
         "stream": False
     }
     r = requests.post(OLLAMA_URL, json=payload, timeout=120)
@@ -1137,7 +1246,7 @@ def ollama_think(prompt: str) -> str:
 # ======================= PROMPT BUILD =======================
 
 def build_messages2(username: str, user_text: str) -> List[Dict[str, str]]:
-    msgs: List[Dict[str, str]] = [{"role": "system", "content": SYSTEM_ROLE}]
+    msgs: List[Dict[str, str]] = [{"role": "system", "content": get_system_role()}]
 
     tc = get_time_context()
     msgs.append({
@@ -1223,8 +1332,8 @@ def build_messages2(username: str, user_text: str) -> List[Dict[str, str]]:
             "content": "Nützliche Stream-Kontext-Notizen (ohne Usernamen):\n- " + "\n- ".join(global_mems)
         })
 
-    msgs.extend(get_recent_chat(MAX_HISTORY_MESSAGES))
-    msgs.extend(get_recent_messages_of_user(username, MAX_USER_FOCUS_MESSAGES))
+    msgs.extend(get_recent_chat(get_max_history()))
+    msgs.extend(get_recent_messages_of_user(username, get_max_user_focus()))
 
     msgs.append({"role": "user", "content": f"[User:{username}] {user_text}"})
     return msgs
@@ -1262,7 +1371,7 @@ def build_think_prompt() -> str:
     return prompt
 
 def thinker_tick_once():
-    if random.random() > DILARA_THINKING_RATE:
+    if random.random() > get_thinking_rate():
         return
 
     cleanup_thoughts()
@@ -1293,7 +1402,7 @@ def thinker_tick_once():
 
     # Promote Self-Langzeit: identity/stability hoch, risk klein
     if stored_as == "long" and identity >= 70 and risk <= 50:
-        add_memory(SELF_USERNAME, content, kind=f"self/{cat}", importance=5)
+        add_memory(get_self_username(), content, kind=f"self/{cat}", importance=5)
 
 def thinker_loop():
     while True:
@@ -1334,7 +1443,7 @@ def chat():
 
     username, clean_text = split_username_and_text(raw)
 
-    if ENABLE_PERVY_GUARD and is_pervy(clean_text):
+    if get_enable_pervy_guard() and is_pervy(clean_text):
         text, emo = normalize_reply(PERVY_RESPONSE)
         add_chat(username, "user", clean_text)
         add_chat("dilara", "assistant", text + "||" + emo)
@@ -1347,7 +1456,7 @@ def chat():
 
     answer = ollama_chat(build_messages2(username, clean_text))
 
-    if ENABLE_PERVY_GUARD and is_pervy(answer):
+    if get_enable_pervy_guard() and is_pervy(answer):
         answer = PERVY_RESPONSE
 
     answer = strip_user_tag(answer)
@@ -1356,7 +1465,7 @@ def chat():
     add_chat(username, "user", clean_text)
     add_chat("dilara", "assistant", text + "||" + emo)
 
-    if ENABLE_AUTO_MEMORY:
+    if get_enable_auto_memory():
         t = clean_text.lower().strip()
         if not looks_short_term_fact(t):
             if t.startswith(("ich bin", "ich mag", "ich liebe", "ich hasse", "ich stehe auf")):
@@ -1420,21 +1529,21 @@ DILARA_SYSTEM_PROMPT = (
 
 def ollama_chat_free(prompt: str, system_prompt: str = DILARA_SYSTEM_PROMPT) -> str:
     payload = {
-        "model": MODEL,
+        "model": get_model(),
         "messages": [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": prompt},
         ],
-        "options": {
+        "options": CONFIG.get("ollama", {}).get("options", {
             "num_ctx": 2048,
             "temperature": 0.6,
             "top_p": 0.98,
-            "repeat_penalty": 1.1, 
+            "repeat_penalty": 1.1,
             "num_batch": 1024
-        },
+        }),
         "stream": False
     }
-    r = requests.post(OLLAMA_URL, json=payload, timeout=180)
+    r = requests.post(OLLAMA_URL, json=payload, timeout=120)
     r.raise_for_status()
     return r.json()["message"]["content"].strip()
 
@@ -1460,12 +1569,84 @@ def chat_free():
 
     return jsonify({"reply": answer, "emotion": emotion})
 
+# ======================= CHARACTER MANAGEMENT API =======================
+
+@app.route("/characters", methods=["GET"])
+def api_list_characters():
+    """List all available characters"""
+    chars = list_characters()
+    current = CURRENT_CHARACTER.name if CURRENT_CHARACTER else None
+    return jsonify({
+        "characters": chars,
+        "current": current
+    })
+
+@app.route("/character/current", methods=["GET"])
+def api_current_character():
+    """Get current character info"""
+    if not CURRENT_CHARACTER:
+        return jsonify({"error": "No character loaded"}), 404
+    
+    return jsonify({
+        "name": CURRENT_CHARACTER.name,
+        "db_path": CURRENT_CHARACTER.db_path,
+        "model": CURRENT_CHARACTER.model,
+        "self_username": CURRENT_CHARACTER.self_username,
+        "thinking_rate": CURRENT_CHARACTER.thinking_rate,
+        "max_history": CURRENT_CHARACTER.max_history,
+        "max_user_focus": CURRENT_CHARACTER.max_user_focus,
+        "enable_auto_memory": CURRENT_CHARACTER.enable_auto_memory,
+        "enable_pervy_guard": CURRENT_CHARACTER.enable_pervy_guard
+    })
+
+@app.route("/character/switch", methods=["POST"])
+def api_switch_character():
+    """Switch to a different character"""
+    data = request.get_json(silent=True) or {}
+    char_name = (data.get("character") or "").strip()
+    
+    if not char_name:
+        return jsonify({"error": "No character name provided"}), 400
+    
+    # Close current DB connection
+    con = g.pop("db", None)
+    if con is not None:
+        con.close()
+    
+    if switch_character(char_name):
+        # Initialize new DB
+        with app.app_context():
+            init_db()
+        
+        return jsonify({
+            "ok": True,
+            "character": CURRENT_CHARACTER.name,
+            "db_path": CURRENT_CHARACTER.db_path
+        })
+    else:
+        return jsonify({"error": f"Character '{char_name}' not found"}), 404
+
 if __name__ == "__main__":
-    init_db()
+    os.makedirs(CHARACTERS_DIR, exist_ok=True)
 
-    import os
-    # Start thinker safely (avoid double-thread with flask reloader)
-    #if os.environ.get("WERKZEUG_RUN_MAIN") == "true" or os.environ.get("FLASK_ENV") != "development":
-    #    start_thinker_thread_once()
+    default_char = CONFIG.get("default_character", "dilara")
+    if not switch_character(default_char):
+        chars = list_characters()
+        if chars:
+            switch_character(chars[0])
+            print(f"Loaded character: {chars[0]}")
+        else:
+            print("No characters found in characters/ directory")
+    else:
+        print(f"Loaded default character: {CURRENT_CHARACTER.name}")
 
-    app.run(host="0.0.0.0", port=5001, debug=True)
+    if CURRENT_CHARACTER:
+        init_db()
+
+    server_cfg = CONFIG.get("server", {})
+    app.run(
+        host=server_cfg.get("host", "0.0.0.0"),
+        port=server_cfg.get("port", 5001),
+        debug=server_cfg.get("debug", True)
+    )
+    

@@ -1,0 +1,40 @@
+{
+  "server": {
+    "host": "0.0.0.0",
+    "port": 5000,
+    "debug": false
+  },
+  "services": {
+    "ki_chat": "http://127.0.0.1:5001",
+    "text_to_speech": "http://127.0.0.1:5005",
+    "vroid_poser": "http://127.0.0.1:5003",
+    "vroid_emotion": "http://127.0.0.1:5004"
+  },
+  "http": {
+    "block_tts_endpoints": false,
+    "timeout": 120
+  },
+  "audio": {
+    "sprecher": "deeliarvt"
+  },
+  "stt": {
+    "mode": "vosk",
+    "vosk_model_path": "models\\vosk-model-de-0.21",
+    "vosk_log_level": 0
+  },
+  "microphone": {
+    "device_name": "Headset (WH-1000XM5 Hands-Free AG Audio)",
+    "allow_partial_match": true
+  },
+  "dilara_modes": {
+    "bedanken": {
+      "emotion": "joy"
+    },
+    "verabschieden": {
+      "emotion": "neutral"
+    },
+    "begrüßen": {
+      "emotion": "joy"
+    }
+  }
+}

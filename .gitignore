@@ -2,3 +2,4 @@
 .venv311
 memory.db
 models
+__pycache__

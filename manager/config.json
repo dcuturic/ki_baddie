@@ -1,0 +1,64 @@
+{
+  "manager": {
+    "host": "0.0.0.0",
+    "port": 8000,
+    "debug": true
+  },
+  "project_root": "..",
+  "services": {
+    "ollama": {
+      "name": "Ollama",
+      "path": "../ollama",
+      "script": "start.ps1",
+      "type": "powershell",
+      "icon": "🤖",
+      "color": "#00d4aa"
+    },
+    "ki_chat": {
+      "name": "KI Chat",
+      "path": "../ki_chat",
+      "script": "app.py",
+      "python_executable": "./.venv/Scripts/python.exe",
+      "type": "python",
+      "icon": "💬",
+      "color": "#7c3aed"
+    },
+    "main_server": {
+      "name": "Main Server",
+      "path": "../main_server",
+      "script": "app.py",
+      "python_executable": "./.venv/Scripts/python.exe",
+      "type": "python",
+      "icon": "🎯",
+      "color": "#3b82f6"
+    },
+    "text_to_speech": {
+      "name": "Text-to-Speech",
+      "path": "../textToSpeech",
+      "script": "app.py",
+      "python_executable": "./.venv311/Scripts/python.exe",
+      "type": "python",
+      "icon": "🔊",
+      "color": "#f59e0b"
+    },
+    "vroid_poser": {
+      "name": "VRoid Poser",
+      "path": "../VroidPoser",
+      "script": "app.py",
+      "python_executable": "./.venv/Scripts/python.exe",
+      "type": "python",
+      "icon": "🎭",
+      "color": "#ec4899"
+    },
+    "vroid_emotion": {
+      "color": "#10b981",
+      "icon": "😊",
+      "name": "VRoid Emotion",
+      "path": "../VroidEmotion",
+      "script": "app.py",
+      "python_executable": "./.venv/Scripts/python.exe",
+      "type": "python"
+    }
+  },
+  "default_instance": "default"
+}

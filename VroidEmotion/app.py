@@ -3,56 +3,73 @@ from typing import Dict, Optional
 import threading
 import time
 import math
+import json
+import os
 
 from flask import Flask, request, jsonify
 from pythonosc.udp_client import SimpleUDPClient
 
+# ======================= CONFIG LOADER =======================
+
+CONFIG_PATH = "config.json"
+CONFIG: Dict = {}
+
+def load_config() -> Dict:
+    """Load global config from JSON file"""
+    if not os.path.exists(CONFIG_PATH):
+        print(f"Warning: {CONFIG_PATH} not found, using defaults")
+        return {}
+    
+    try:
+        with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception as e:
+        print(f"Error loading config: {e}")
+        return {}
+
+CONFIG = load_config()
+
 # ----------------------------
 # VSeeFace / VMC OSC Settings
 # ----------------------------
-VSEE_HOST = "127.0.0.1"
-VSEE_PORT = 39539  # aus VSeeFace
+osc_cfg = CONFIG.get("osc", {})
+VSEE_HOST = osc_cfg.get("host", "127.0.0.1")
+VSEE_PORT = osc_cfg.get("port", 39539)
+OSC_ENABLED = osc_cfg.get("enabled", True)
 
 # ----------------------------
 # Mapping (deine Commands -> Keys)
 # ----------------------------
-EMOTION_MAP: Dict[str, str] = {
+EMOTION_MAP: Dict[str, str] = CONFIG.get("emotion_map", {
     "joy": "Joy",
-    "angry": "Angry",   # manche Models: "Anger"
+    "angry": "Angry",
     "sorrow": "Sorrow",
     "fun": "Fun",
-    "neutral": "Neutral",  # oft existiert Neutral NICHT, ist okay
-    "surprise": "Surprised",  # oft existiert Neutral NICHT, ist okay,
+    "neutral": "Neutral",
+    "surprise": "Surprised",
     "surprised": "Surprised",
-    
-}
+})
 
 # ---------------------------- surprise, angry, sorrow, fun, neutral,joy
 # WICHTIG: Reset-Liste erweitern
 # Damit wirklich nix "hängen bleibt"
 # (Keys, die es nicht gibt, werden meistens ignoriert)
 # ----------------------------
-RESET_KEYS = sorted(set([
-    # Emotions
+RESET_KEYS = sorted(set(CONFIG.get("reset_keys", [
     "Joy", "Angry", "Anger", "Sorrow", "Fun", "Neutral",
     "Surprised", "Surprise", "Relaxed", "Sad", "Happy",
-
-    # Mouth (Visemes)
     "A", "I", "U", "E", "O",
-
-    # Eyes / Blink
     "Blink", "Blink_L", "Blink_R",
-
-    # Common extras
     "Smile", "Smirk", "Frown",
-]))
+])))
 
 # zusätzlich auch die aus EMOTION_MAP
 RESET_KEYS = sorted(set(RESET_KEYS + list(EMOTION_MAP.values())))
 
 # OSC Paths
-OSC_VAL = "/VMC/Ext/Blend/Val"
-OSC_APPLY = "/VMC/Ext/Blend/Apply"
+osc_paths_cfg = CONFIG.get("osc_paths", {})
+OSC_VAL = osc_paths_cfg.get("blend_val", "/VMC/Ext/Blend/Val")
+OSC_APPLY = osc_paths_cfg.get("blend_apply", "/VMC/Ext/Blend/Apply")
 
 
 @dataclass
@@ -92,12 +109,13 @@ class SmoothBlendController:
         self.fade_time = 0.35   # default: schöner Übergang (Sekunden)
         self.fps = 60
 
+        blend_cfg = CONFIG.get("blend_controller", {})
+        self.fade_time = blend_cfg.get("fade_time", self.fade_time)
+        self.fps = blend_cfg.get("fps", self.fps)
+
         self._running = True
         self._thread = threading.Thread(target=self._loop, daemon=True)
         self._thread.start()
-
-    def stop(self):
-        self._running = False
 
     def _send_val(self, key: str, value: float):
         self.client.send_message(OSC_VAL, [key, float(value)])
@@ -210,12 +228,13 @@ class SmoothBlendController:
 # Flask App
 # ----------------------------
 app = Flask(__name__)
-blend = SmoothBlendController(VSEE_HOST, VSEE_PORT, RESET_KEYS)
+blend = SmoothBlendController(VSEE_HOST, VSEE_PORT, RESET_KEYS) if OSC_ENABLED else None
 
 
 @app.get("/health")
 def health():
-    return jsonify(ok=True, host=VSEE_HOST, port=VSEE_PORT, state=blend.snapshot())
+    state = blend.snapshot() if blend else {"osc_enabled": False}
+    return jsonify(ok=True, host=VSEE_HOST, port=VSEE_PORT, osc_enabled=OSC_ENABLED, state=state)
 
 
 @app.post("/emotion")
@@ -240,20 +259,23 @@ def set_emotion():
 
     if fade is not None:
         try:
-            blend.set_fade_time(float(fade))
+            if blend:
+                blend.set_fade_time(float(fade))
         except Exception:
             return jsonify(ok=False, error="Invalid 'fade'"), 400
 
     key = EMOTION_MAP.get(emotion, emotion)  # erlaubt direkte Keys
     print(key, intensity)
-    blend.set_exclusive_target(key, intensity)
+    if blend:
+        blend.set_exclusive_target(key, intensity)
     print("emotion",emotion)
-    return jsonify(ok=True, emotion=emotion, key=key, intensity=clamp01(intensity), fade=blend.fade_time)
+    return jsonify(ok=True, emotion=emotion, key=key, intensity=clamp01(intensity), fade=blend.fade_time if blend else 0)
 
 
 @app.post("/reset")
 def reset():
-    blend.reset_all()
+    if blend:
+        blend.reset_all()
     return jsonify(ok=True, reset=True)
 
 
@@ -267,11 +289,18 @@ def set_fade():
     if seconds is None:
         return jsonify(ok=False, error="Missing 'seconds'"), 400
     try:
-        blend.set_fade_time(float(seconds))
+        if blend:
+            blend.set_fade_time(float(seconds))
     except Exception:
         return jsonify(ok=False, error="Invalid 'seconds'"), 400
-    return jsonify(ok=True, fade=blend.fade_time)
+    return jsonify(ok=True, fade=blend.fade_time if blend else 0)
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5004, debug=True, threaded=True)
+    server_cfg = CONFIG.get("server", {})
+    app.run(
+        host=server_cfg.get("host", "0.0.0.0"),
+        port=server_cfg.get("port", 5004),
+        debug=server_cfg.get("debug", False),
+        threaded=True
+    )

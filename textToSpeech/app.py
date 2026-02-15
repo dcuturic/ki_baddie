@@ -9,6 +9,7 @@ import random
 from datetime import datetime
 from dataclasses import dataclass
 import re
+from typing import Dict
 
 import requests
 import numpy as np
@@ -16,35 +17,67 @@ import sounddevice as sd
 from flask import Flask, request, jsonify, Response
 from pythonosc.udp_client import SimpleUDPClient
 
-GPU_INDEX = 0
+# ======================= CONFIG LOADER =======================
 
-VOICE_FX_ENABLED = True
-GLOBAL_FX_ENABLED = True
-EMOTION_FX_ENABLED = False
+CONFIG_PATH = "config.json"
+CONFIG: Dict = {}
 
-END_PAD_MS = 320
-END_FADE_MS = 45
+def load_config() -> Dict:
+    """Load global config from JSON file"""
+    if not os.path.exists(CONFIG_PATH):
+        print(f"Warning: {CONFIG_PATH} not found, using defaults")
+        return {}
+    
+    try:
+        with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception as e:
+        print(f"Error loading config: {e}")
+        return {}
 
-OSC_HOST = "127.0.0.1"
-OSC_PORT = 39539
+CONFIG = load_config()
 
-VOICEMOD_OUTPUT_NAME_SUBSTRING = "cable input"
+# ======================= CONFIG VALUES =======================
 
-TTS_MODEL_NAME = "tts_models/multilingual/multi-dataset/xtts_v2"
-LANGUAGE = "de"
-XTTS_SR = 24000
+GPU_INDEX = CONFIG.get("gpu", {}).get("index", 0)
 
-EMOTION_WAVS = {
+voice_fx = CONFIG.get("voice_fx", {})
+VOICE_FX_ENABLED = voice_fx.get("enabled", True)
+GLOBAL_FX_ENABLED = voice_fx.get("global_fx_enabled", True)
+EMOTION_FX_ENABLED = voice_fx.get("emotion_fx_enabled", False)
+FX_DIR = voice_fx.get("fx_dir", "voice_fx")
+
+audio_cfg = CONFIG.get("audio", {})
+END_PAD_MS = audio_cfg.get("end_pad_ms", 320)
+END_FADE_MS = audio_cfg.get("end_fade_ms", 45)
+
+osc_cfg = CONFIG.get("osc", {})
+OSC_HOST = osc_cfg.get("host", "127.0.0.1")
+OSC_PORT = osc_cfg.get("port", 39539)
+OSC_ENABLED = osc_cfg.get("enabled", True)
+
+services_cfg = CONFIG.get("services", {})
+VROID_EMOTION_URL = services_cfg.get("vroid_emotion", "http://127.0.0.1:5004")
+MAIN_SERVER_URL = services_cfg.get("main_server", "http://127.0.0.1:5000")
+
+voicemod_cfg = CONFIG.get("voicemod", {})
+VOICEMOD_OUTPUT_NAME_SUBSTRING = voicemod_cfg.get("output_name_substring", "cable input")
+ADDITIONAL_OUTPUTS = voicemod_cfg.get("additional_outputs", [])
+
+tts_cfg = CONFIG.get("tts", {})
+TTS_MODEL_NAME = tts_cfg.get("model_name", "tts_models/multilingual/multi-dataset/xtts_v2")
+LANGUAGE = tts_cfg.get("language", "de")
+XTTS_SR = tts_cfg.get("sample_rate", 24000)
+
+EMOTION_WAVS = CONFIG.get("emotions", {
     "joy": "voices/neutral.wav",
     "angry": "voices/neutral.wav",
     "sorrow": "voices/neutral.wav",
     "fun": "voices/neutral.wav",
     "neutral": "voices/neutral.wav",
     "surprise": "voices/neutral.wav",
-}
-DEFAULT_EMOTION = "neutral"
-
-FX_DIR = "voice_fx"
+})
+DEFAULT_EMOTION = CONFIG.get("default_emotion", "neutral")
 
 import torch
 
@@ -280,18 +313,22 @@ class FXStore:
 
 
 app = Flask(__name__)
-osc_client = SimpleUDPClient(OSC_HOST, OSC_PORT)
+osc_client = SimpleUDPClient(OSC_HOST, OSC_PORT) if OSC_ENABLED else None
 
 CLEAR_BEFORE_EACH = True
 VISEMES = [("A", 1.0), ("O", 0.9), ("E", 0.6), ("I", 0.5), ("U", 0.4)]
 
 
 def set_viseme(key: str, value: float):
+    if not osc_client:
+        return
     osc_client.send_message("/VMC/Ext/Blend/Val", [key, float(value)])
     osc_client.send_message("/VMC/Ext/Blend/Apply", 1)
 
 
 def clear_mouth():
+    if not osc_client:
+        return
     for k, _ in VISEMES:
         osc_client.send_message("/VMC/Ext/Blend/Val", [k, 0.0])
     osc_client.send_message("/VMC/Ext/Blend/Apply", 1)
@@ -308,6 +345,17 @@ def find_output_device_id(name_substring: str) -> int:
 
 
 CABLE_DEVICE_ID = find_output_device_id(VOICEMOD_OUTPUT_NAME_SUBSTRING)
+
+# Resolve additional output device IDs for parallel playback
+ADDITIONAL_DEVICE_IDS = []
+for _ao_name in ADDITIONAL_OUTPUTS:
+    try:
+        _ao_id = find_output_device_id(_ao_name)
+        ADDITIONAL_DEVICE_IDS.append((_ao_name, _ao_id))
+        print(f"[Audio] Additional output device: {_ao_name!r} -> ID {_ao_id}", flush=True)
+    except RuntimeError as _e:
+        print(f"[Audio] WARNING: Additional output device not found: {_ao_name!r}", flush=True)
+
 AUDIO_LOCK = threading.Lock()
 
 fx_store = FXStore(root_dir=FX_DIR)
@@ -807,13 +855,12 @@ def play_audio_blocking(wav_f32: np.ndarray, sr: int, emotion: str):
 
 
         try:
-            requests.post("http://127.0.0.1:5004/emotion", json={"emotion": emotion}, timeout=30)
+            requests.post(f"{VROID_EMOTION_URL}/emotion", json={"emotion": emotion}, timeout=30)
         except Exception:
             pass
-        
 
         try:
-            requests.post("http://127.0.0.1:5000/play/pose/"+emotion_pose_name+"/"+emotion_pose_file+"", timeout=30)
+            requests.post(f"{MAIN_SERVER_URL}/play/pose/{emotion_pose_name}/{emotion_pose_file}", timeout=30)
         except Exception:
             pass
 
@@ -824,20 +871,41 @@ def play_audio_blocking(wav_f32: np.ndarray, sr: int, emotion: str):
         
 
         sd.stop()
+
+        # Play to additional output devices in parallel threads using OutputStream
+        extra_threads = []
+        for ao_name, ao_id in ADDITIONAL_DEVICE_IDS:
+            def _play_extra(data=wav_f32.copy(), rate=sr, dev_id=ao_id, dev_name=ao_name):
+                try:
+                    stream = sd.OutputStream(samplerate=rate, channels=1, device=dev_id, dtype='float32')
+                    stream.start()
+                    stream.write(data)
+                    stream.stop()
+                    stream.close()
+                except Exception as _e:
+                    print(f"[Audio] Error playing to {dev_name}: {_e}", flush=True)
+            t = threading.Thread(target=_play_extra, daemon=True)
+            t.start()
+            extra_threads.append(t)
+
+        # Play to primary device (blocking)
         sd.play(wav_f32, sr, device=CABLE_DEVICE_ID)
         sd.wait()
+
+        # Wait for all extra threads to finish
+        for t in extra_threads:
+            t.join(timeout=30)
 
         local_stop.set()
         clear_mouth()
 
         try:
-            requests.post("http://127.0.0.1:5004/emotion", json={"emotion": "neutral"}, timeout=30)
+            requests.post(f"{VROID_EMOTION_URL}/emotion", json={"emotion": "neutral"}, timeout=30)
         except Exception:
             pass
-        
 
         try:
-            requests.post("http://127.0.0.1:5000/play/pose/default/idle", timeout=30)
+            requests.post(f"{MAIN_SERVER_URL}/play/pose/default/idle", timeout=30)
         except Exception:
             pass
 
@@ -1011,4 +1079,9 @@ def tts():
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5003, debug=True)
+    server_cfg = CONFIG.get("server", {})
+    app.run(
+        host=server_cfg.get("host", "0.0.0.0"),
+        port=server_cfg.get("port", 5002),
+        debug=server_cfg.get("debug", False)
+    )

@@ -1,0 +1,372 @@
+{% extends "base.html" %}
+
+{% block page_title %}{{ instance.name }} - Dashboard{% endblock %}
+{% block page_subtitle %}System-Überwachung und Statistiken{% endblock %}
+
+{% block page_actions %}
+<div style="display: flex; gap: 1rem; align-items: center;">
+    <select id="instanceSwitcher" onchange="switchToInstance(this.value)" style="padding: 0.75rem 1rem; border-radius: 6px; border: 2px solid var(--accent-primary); background: var(--bg-secondary); color: var(--text-primary); cursor: pointer;">
+        <option value="">-- Instanz wechseln --</option>
+        {% for inst in instances %}
+        <option value="{{ inst.filename }}" {% if inst.filename == instance_name %}selected{% endif %}>
+            {{ inst.name }}
+        </option>
+        {% endfor %}
+    </select>
+    <a href="/instance/{{ instance_name }}/services" class="btn btn-secondary">
+        📦 Services Verwalten
+    </a>
+    <button class="btn btn-success btn-large" onclick="launchInstance('{{ instance_name }}')">
+        ▶️ Starten
+    </button>
+    <button class="btn btn-danger btn-large" onclick="stopInstance('{{ instance_name }}')">
+        ⏹️ Stoppen
+    </button>
+</div>
+{% endblock %}
+
+{% block content %}
+<!-- Instance Info Header -->
+<div class="dashboard-header">
+    <div class="instance-info-card">
+        <div>
+            <h2>{{ instance.name }}</h2>
+            <p class="instance-desc">{{ instance.description or 'Keine Beschreibung' }}</p>
+        </div>
+    </div>
+</div>
+
+<!-- Dashboard Stats -->
+<div class="dashboard-stats">
+    <div class="stat-card">
+        <div class="stat-icon">📦</div>
+        <div class="stat-content">
+            <h4>Services</h4>
+            <p class="stat-number">{{ services|length }}</p>
+            <small id="running-services">0 läuft</small>
+        </div>
+    </div>
+    
+    <div class="stat-card">
+        <div class="stat-icon">⚡</div>
+        <div class="stat-content">
+            <h4>CPU Gesamt</h4>
+            <p class="stat-number" id="total-cpu">0%</p>
+            <small id="total-cpu-sub">Services 0% / Host 0%</small>
+        </div>
+    </div>
+    
+    <div class="stat-card">
+        <div class="stat-icon">🎮</div>
+        <div class="stat-content">
+            <h4>GPU Gesamt</h4>
+            <p class="stat-number" id="total-gpu">0%</p>
+            <small id="total-gpu-mem">GPU nicht verfügbar</small>
+        </div>
+    </div>
+    
+    <div class="stat-card">
+        <div class="stat-icon">🌐</div>
+        <div class="stat-content">
+            <h4>Netzwerk</h4>
+            <p class="stat-number" id="instance-network">↓ 0 B/s</p>
+            <small id="instance-network-up">↑ 0 B/s</small>
+        </div>
+    </div>
+</div>
+
+<!-- Services Overview -->
+<div class="services-overview">
+    <h2 class="section-title">📊 Service-Übersicht</h2>
+    
+    {% if services|length == 0 %}
+    <div class="empty-state">
+        <p>❌ Keine Services in dieser Instanz konfiguriert</p>
+    </div>
+    {% else %}
+    <div class="services-mini-grid">
+        {% for service_id, service in services.items() %}
+        <div class="service-mini-card" data-service="{{ service_id }}">
+            <div class="service-mini-header">
+                <div class="service-icon-small" style="color: {{ service.color }}">
+                    {{ service.icon }}
+                </div>
+                <div>
+                    <h4>{{ service.name }}</h4>
+                    <small>{{ service_id }}</small>
+                </div>
+            </div>
+            
+            <div class="service-mini-stats">
+                <div class="mini-stat">
+                    <span class="label">Status:</span>
+                    <span class="value" id="status-{{ service_id }}">❓</span>
+                </div>
+                <div class="mini-stat">
+                    <span class="label">CPU:</span>
+                    <span class="value" id="cpu-{{ service_id }}">0%</span>
+                </div>
+                <div class="mini-stat">
+                    <span class="label">RAM:</span>
+                    <span class="value" id="ram-{{ service_id }}">0 MB</span>
+                </div>
+                <div class="mini-stat">
+                    <span class="label">GPU:</span>
+                    <span class="value" id="gpu-{{ service_id }}">--</span>
+                </div>
+                <div class="mini-stat">
+                    <span class="label">PID:</span>
+                    <span class="value" id="pid-{{ service_id }}">--</span>
+                </div>
+            </div>
+            
+            <div class="service-mini-actions">
+                <a href="/instance/{{ instance_name }}/services#{{ service_id }}" class="btn btn-sm btn-secondary">
+                    Verwalten
+                </a>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+</div>
+
+<!-- System Logs -->
+<div class="system-logs">
+    <div class="logs-header">
+        <h3>📋 System Logs</h3>
+        <button class="btn btn-sm btn-secondary" onclick="toggleLogsPanel()">
+            <span id="logsToggleText">▼ Minimieren</span>
+        </button>
+    </div>
+    <div class="logs-panel" id="logsPanel">
+        <div class="logs-service-selector">
+            <label>Service auswählen:</label>
+            <select id="logServiceSelector" onchange="showServiceLogs(this.value)">
+                <option value="">-- System Events --</option>
+                {% for service_id in services.keys() %}
+                <option value="{{ service_id }}">{{ services[service_id].name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="logs-content" id="logsContent">
+            <div class="log-entry log-info">Wähle einen Service um Logs zu sehen</div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+let serviceStatuses = {};
+let logsExpanded = true;
+const currentInstanceName = '{{ instance_name }}';
+
+// Init
+async function initializeDashboard() {
+    await updateAllServices();
+    setInterval(updateAllServices, 2000);
+}
+
+// Update services
+async function updateAllServices() {
+    try {
+        const result = await apiCall(`/api/status/all?instance=${encodeURIComponent(currentInstanceName)}`);
+        const statuses = result.services || {};
+        serviceStatuses = statuses;
+        
+        // Update mini cards
+        Object.entries(statuses).forEach(([serviceId, status]) => {
+            updateServiceMiniCard(serviceId, status);
+        });
+        
+        // Update dashboard stats
+        updateDashboardStats(statuses, result.instance_meta || {});
+    } catch (error) {
+        console.error('Error updating services:', error);
+    }
+}
+
+// Update service mini card
+function updateServiceMiniCard(serviceId, status) {
+    const card = document.querySelector(`[data-service="${serviceId}"]`);
+    if (!card) return;
+    
+    const isRunning = status.status === 'running';
+    
+    const statusEl = card.querySelector(`#status-${serviceId}`);
+    statusEl.textContent = isRunning ? '✅ Läuft' : '❌ Gestoppt';
+    statusEl.style.color = isRunning ? '#10b981' : '#ef4444';
+    
+    const cpu = Number(status.cpu || 0);
+    const ram = Number(status.memory || 0);
+    const gpu = Number(status.gpu || 0);
+    const gpuMem = Number(status.gpu_memory_mb || 0);
+    const gpuAvailable = !!status.gpu_available;
+
+    card.querySelector(`#cpu-${serviceId}`).textContent = cpu.toFixed(1) + '%';
+    card.querySelector(`#ram-${serviceId}`).textContent = ram.toFixed(0) + ' MB';
+    card.querySelector(`#gpu-${serviceId}`).textContent = gpuAvailable
+        ? `${gpu.toFixed(1)}%`
+        : '--';
+    card.querySelector(`#pid-${serviceId}`).textContent = status.pid || '--';
+}
+
+// Update dashboard stats
+function updateDashboardStats(statuses, instanceMeta) {
+    let running = 0;
+    
+    Object.values(statuses).forEach(status => {
+        if (status.status === 'running') {
+            running++;
+        }
+    });
+
+    const serviceCpu = Number(instanceMeta.service_cpu_percent || 0);
+    const serviceCpuMax = Number(instanceMeta.service_cpu_percent_max || 0);
+    const hostCpu = Number(instanceMeta.host_cpu_percent || 0);
+    const serviceRam = Number(instanceMeta.service_memory_mb || 0);
+
+    const gpu = instanceMeta.gpu || {};
+    const gpuUtil = Number(gpu.utilization_percent || 0);
+    const gpuMemUsed = Number(gpu.memory_used_mb || 0);
+    const gpuMemTotal = Number(gpu.memory_total_mb || 0);
+    const gpuAvailable = !!gpu.available;
+
+    const network = instanceMeta.network || {};
+    const downBps = Number(network.download_bps || 0);
+    const upBps = Number(network.upload_bps || 0);
+    
+    document.getElementById('running-services').textContent = `${running} läuft`;
+    document.getElementById('total-cpu').textContent = hostCpu.toFixed(1) + '%';
+    document.getElementById('total-cpu-sub').textContent = `Instanz CPU · Service-Last ${serviceCpu.toFixed(1)}% (max ${serviceCpuMax.toFixed(1)}%) · RAM ${serviceRam.toFixed(0)} MB`;
+    document.getElementById('total-gpu').textContent = gpuUtil.toFixed(1) + '%';
+    document.getElementById('total-gpu-mem').textContent = gpuAvailable
+        ? `${gpuMemUsed.toFixed(0)} / ${gpuMemTotal.toFixed(0)} MB`
+        : 'GPU nicht verfügbar';
+    document.getElementById('instance-network').textContent = `↓ ${formatBytesPerSecond(downBps)}`;
+    document.getElementById('instance-network-up').textContent = `↑ ${formatBytesPerSecond(upBps)}`;
+}
+
+// Format uptime
+function formatUptime(seconds) {
+    if (!seconds) return '--';
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const secs = Math.floor(seconds % 60);
+    if (hours > 0) return `${hours}h ${minutes}m`;
+    if (minutes > 0) return `${minutes}m ${secs}s`;
+    return `${secs}s`;
+}
+
+function formatBytesPerSecond(bytes) {
+    const value = Number(bytes || 0);
+    if (value <= 0) return '0 B/s';
+    const units = ['B/s', 'KB/s', 'MB/s', 'GB/s'];
+    let size = value;
+    let unitIndex = 0;
+    while (size >= 1024 && unitIndex < units.length - 1) {
+        size /= 1024;
+        unitIndex++;
+    }
+    return `${size.toFixed(1)} ${units[unitIndex]}`;
+}
+
+// Switch instance
+function switchToInstance(instanceName) {
+    if (instanceName) {
+        location.href = `/instance/${instanceName}/dashboard`;
+    }
+}
+
+// Launch instance
+async function launchInstance(instanceName) {
+    showNotification('Instanz wird gestartet...', 'info');
+    try {
+        const result = await apiCall(`/api/instance/start/${instanceName}`, { method: 'POST' });
+        if (result && result.success) {
+            showNotification(`✅ Services gestartet: ${result.started.length}`, 'success');
+            await updateAllServices();
+        } else {
+            showNotification('❌ Fehler beim Starten', 'error');
+        }
+    } catch (error) {
+        showNotification(`❌ ${error.message}`, 'error');
+    }
+}
+
+// Stop instance
+async function stopInstance(instanceName) {
+    showNotification('Instanz wird gestoppt...', 'info');
+    try {
+        const result = await apiCall(`/api/instance/stop/${instanceName}`, { method: 'POST' });
+        if (result && result.success) {
+            showNotification(`✅ Services gestoppt: ${result.stopped.length}`, 'success');
+            await updateAllServices();
+        } else {
+            showNotification('❌ Fehler beim Stoppen', 'error');
+        }
+    } catch (error) {
+        showNotification(`❌ ${error.message}`, 'error');
+    }
+}
+
+// Show logs
+async function showServiceLogs(serviceId) {
+    if (!serviceId) {
+        document.getElementById('logsContent').innerHTML = 
+            '<div class="log-entry log-info">Systeminformationen...</div>';
+        return;
+    }
+    
+    try {
+        const logs = await getServiceLogs(serviceId, 100);
+        displayLogs(logs);
+    } catch (error) {
+        document.getElementById('logsContent').innerHTML = 
+            `<div class="log-entry log-error">Fehler: ${error.message}</div>`;
+    }
+}
+
+// Display logs
+function displayLogs(logs) {
+    const container = document.getElementById('logsContent');
+    
+    if (!logs || logs.trim() === '') {
+        container.innerHTML = '<div class="log-entry log-info">Keine Logs verfügbar</div>';
+        return;
+    }
+    
+    const logLines = logs.split('\n').filter(l => l.trim());
+    container.innerHTML = logLines.slice(-50).map((line) => {
+        let level = 'info';
+        if (line.includes('ERROR') || line.includes('error')) level = 'error';
+        else if (line.includes('WARNING') || line.includes('warning')) level = 'warning';
+        else if (line.includes('SUCCESS') || line.includes('success')) level = 'success';
+        return `<div class="log-entry log-${level}">${escapeHtml(line)}</div>`;
+    }).join('');
+    
+    container.scrollTop = container.scrollHeight;
+}
+
+// Toggle logs
+function toggleLogsPanel() {
+    const panel = document.getElementById('logsPanel');
+    const text = document.getElementById('logsToggleText');
+    logsExpanded = !logsExpanded;
+    
+    panel.style.display = logsExpanded ? 'block' : 'none';
+    text.textContent = logsExpanded ? '▼ Minimieren' : '▶ Erweitern';
+}
+
+// Escape HTML
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+document.addEventListener('DOMContentLoaded', initializeDashboard);
+</script>
+{% endblock %}

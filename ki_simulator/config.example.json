@@ -1,0 +1,26 @@
+{
+  "bot_a": {
+    "name": "Dilara",
+    "url": "http://localhost:5001",
+    "endpoint": "/chat",
+    "role": "ruhig, kontrolliert, besitzergreifend",
+    "user_id": "sim_dilara"
+  },
+  "bot_b": {
+    "name": "Luna",
+    "url": "http://localhost:5001",
+    "endpoint": "/chat",
+    "role": "mystisch, weise, poetisch",
+    "user_id": "sim_luna"
+  },
+  "conversation": {
+    "topic": "Entwerft gemeinsam ein Stream-Konzept für die Nacht",
+    "strategy": "story",
+    "turns": 10,
+    "starter": "a",
+    "history_window": 6,
+    "delay_seconds": 0.2,
+    "timeout_seconds": 90,
+    "output_path": "transcript.json"
+  }
+}

@@ -3,35 +3,69 @@ import requests
 import time
 import os
 import threading
+import json
 from typing import Dict, Any, Optional
 
 
 app = Flask(__name__)
 
+# ======================= CONFIG LOADER =======================
+
+CONFIG_PATH = "config.json"
+CONFIG: Dict = {}
+
+def load_config() -> Dict:
+    """Load global config from JSON file"""
+    if not os.path.exists(CONFIG_PATH):
+        print(f"Warning: {CONFIG_PATH} not found, using defaults")
+        return {}
+    
+    try:
+        with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception as e:
+        print(f"Error loading config: {e}")
+        return {}
+
+CONFIG = load_config()
+
 # =================================================
 # SETTINGS
 # =================================================
-BLOCK_HTTP_TTS_ENDPOINTS = False
+http_cfg = CONFIG.get("http", {})
+BLOCK_HTTP_TTS_ENDPOINTS = http_cfg.get("block_tts_endpoints", False)
+HTTP_TIMEOUT = http_cfg.get("timeout", 120)
 
-SPRECHER = "deeliarvt"
+audio_cfg = CONFIG.get("audio", {})
+SPRECHER = audio_cfg.get("sprecher", "deeliarvt")
 
-STT_MODE = os.getenv("STT_MODE", "vosk").lower()
-VOSK_MODEL_PATH = os.getenv("VOSK_MODEL_PATH", r"models\vosk-model-de-0.21")
+stt_cfg = CONFIG.get("stt", {})
+STT_MODE = os.getenv("STT_MODE", stt_cfg.get("mode", "vosk")).lower()
+VOSK_MODEL_PATH = os.getenv("VOSK_MODEL_PATH", stt_cfg.get("vosk_model_path", r"models\vosk-model-de-0.21"))
+VOSK_LOG_LEVEL = stt_cfg.get("vosk_log_level", 0)
 
 # Mikro per Namen
-MIC_DEVICE_NAME = "Headset (WH-1000XM5 Hands-Free AG Audio)"
-MIC_NAME_ALLOW_PARTIAL_MATCH = True
+mic_cfg = CONFIG.get("microphone", {})
+MIC_DEVICE_NAME = mic_cfg.get("device_name", "Headset (WH-1000XM5 Hands-Free AG Audio)")
+MIC_NAME_ALLOW_PARTIAL_MATCH = mic_cfg.get("allow_partial_match", True)
 
-VOSK_LOG_LEVEL = 0
+services_cfg = CONFIG.get("services", {})
+CHAT_BASE_URL = services_cfg.get("ki_chat", "http://127.0.0.1:5001")
+TTS_BASE_URL = services_cfg.get("text_to_speech", "http://127.0.0.1:5005")
+VROID_POSER_BASE_URL = services_cfg.get("vroid_poser", "http://127.0.0.1:5003")
+VROID_EMOTION_BASE_URL = services_cfg.get("vroid_emotion", "http://127.0.0.1:5004")
 
 # =================================================
 # VOSK MODEL PRELOAD
 # =================================================
 VOSK_MODEL = None
 
-from typing import Dict
+# Load DILARA_MODES from config or use defaults
+_dilara_modes_from_config = CONFIG.get("dilara_modes", {})
 
-DILARA_MODES: Dict[str, Dict[str, str]] = {
+# If config doesn't have full messages, use the hardcoded defaults
+if not _dilara_modes_from_config or not _dilara_modes_from_config.get("bedanken", {}).get("message"):
+    DILARA_MODES: Dict[str, Dict[str, str]] = {
     "bedanken": {
         "message": (
             "DU BIST 'DILARA' (charmant, warm, streamig – Gefühl auf 200%). "
@@ -256,6 +290,9 @@ DILARA_MODES: Dict[str, Dict[str, str]] = {
         "emotion": "neutral"
     }
 }
+else:
+    # Use DILARA_MODES from config
+    DILARA_MODES = _dilara_modes_from_config
 
 
 
@@ -366,7 +403,7 @@ def split_username_and_text(user_text: str):
 
 
 def do_call_tts_logic(text: str):
-    tts_url = "http://127.0.0.1:5003/tts"
+    tts_url = f"{TTS_BASE_URL.rstrip('/')}/tts"
 
     username, msg = split_username_and_text(text)
     if username:
@@ -379,14 +416,14 @@ def do_call_tts_logic(text: str):
         "wav_path": r"out\only.wav",
     }
 
-    return requests.post(tts_url, json=payload, timeout=120)
+    return requests.post(tts_url, json=payload, timeout=HTTP_TIMEOUT)
 
 
 def do_call_tts_dilara_logic(text: str):
-    chat_url = "http://127.0.0.1:5001/chat"
-    tts_url2 = "http://127.0.0.1:5003/tts"
+    chat_url = f"{CHAT_BASE_URL.rstrip('/')}/chat"
+    tts_url2 = f"{TTS_BASE_URL.rstrip('/')}/tts"
 
-    r = requests.post(chat_url, json={"message": text}, timeout=120)
+    r = requests.post(chat_url, json={"message": text}, timeout=HTTP_TIMEOUT)
     r.raise_for_status()
     data = r.json()
     reply = data.get("reply", "")
@@ -396,7 +433,7 @@ def do_call_tts_dilara_logic(text: str):
     send_this_tts = {"text": {"value": reply, "emotion": emotion}}
     print(send_this_tts, flush=True)
 
-    return requests.post(tts_url2, json=send_this_tts, timeout=120)
+    return requests.post(tts_url2, json=send_this_tts, timeout=HTTP_TIMEOUT)
 
 
 # =================================================
@@ -424,6 +461,40 @@ def call_tts_dilara_get(text):
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
+def _proxy_to_poser(method: str, path: str):
+    url = f"{VROID_POSER_BASE_URL.rstrip('/')}{path}"
+    try:
+        if method == "GET":
+            r = requests.get(url, timeout=HTTP_TIMEOUT)
+        elif method == "POST":
+            r = requests.post(url, timeout=HTTP_TIMEOUT)
+        else:
+            return jsonify({"ok": False, "error": f"Unsupported method: {method}"}), 500
+        return Response(r.content, status=r.status_code, content_type=r.headers.get("Content-Type"))
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e), "target": url}), 500
+
+
+@app.get("/play/motion/<path:name>")
+def proxy_play_motion_get(name):
+    return _proxy_to_poser("GET", f"/play/motion/{name}")
+
+
+@app.post("/play/motion/<path:name>")
+def proxy_play_motion_post(name):
+    return _proxy_to_poser("POST", f"/play/motion/{name}")
+
+
+@app.post("/play/pose/<path:name>")
+def proxy_play_pose_post(name):
+    return _proxy_to_poser("POST", f"/play/pose/{name}")
+
+
+@app.get("/play/motion/random")
+def proxy_play_motion_random_get():
+    return _proxy_to_poser("GET", "/play/motion/random")
+
+
 import requests
 from typing import Dict, Any, Optional
 
@@ -447,9 +518,9 @@ def do_call_tts_dilara_free_logic(
     text: str,
     modus: str,
     modes_config: Dict[str, Dict[str, str]] = DILARA_MODES,
-    chat_url: str = "http://127.0.0.1:5001/chat-free",
-    tts_url2: str = "http://127.0.0.1:5003/tts",
-    timeout: int = 120
+    chat_url: str = f"{CHAT_BASE_URL.rstrip('/')}/chat-free",
+    tts_url2: str = f"{TTS_BASE_URL.rstrip('/')}/tts",
+    timeout: int = HTTP_TIMEOUT
 ) -> Optional[requests.Response]:
     print(text)
     print(modus)
@@ -762,4 +833,9 @@ if __name__ == "__main__":
         # 3) Hotkeys starten
         start_hotkeys()
 
-    app.run(host="0.0.0.0", port=5050, debug=True)
+    server_cfg = CONFIG.get("server", {})
+    app.run(
+        host=server_cfg.get("host", "0.0.0.0"),
+        port=server_cfg.get("port", 5000),
+        debug=server_cfg.get("debug", False)
+    )

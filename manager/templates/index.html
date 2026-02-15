@@ -1,0 +1,841 @@
+{% extends "base.html" %}
+
+{% block page_title %}KI Girl Manager{% endblock %}
+{% block page_subtitle %}Instanz Verwaltung{% endblock %}
+
+{% block page_actions %}
+<button class="btn btn-primary" onclick="createInstanceFromIndex()">
+    <span>➕</span> Neue Instanz erstellen
+</button>
+{% endblock %}
+
+{% block content %}
+<div class="index-container">
+    <div class="index-header">
+        <h1>🎯 Wähle eine Instanz zum Starten</h1>
+        <p class="subtitle">Jede Instanz hat ihre eigenen Services und Konfiguration</p>
+    </div>
+
+    {% if not instances %}
+    <div class="empty-state">
+        <p>❌ Keine Instanzen vorhanden</p>
+        <button class="btn btn-primary" onclick="createInstanceFromIndex()">
+            First Instanz erstellen
+        </button>
+    </div>
+    {% else %}
+    <div class="instances-browser">
+        {% for instance in instances %}
+        <div class="instance-selector-card" onclick="goToInstance('{{ instance.filename }}')">
+            <div class="instance-selector-header">
+                <h2>{{ instance.name }}</h2>
+                <span class="instance-status">▶</span>
+            </div>
+            
+            <p class="instance-desc">{{ instance.description or 'Keine Beschreibung' }}</p>
+            
+            <div class="instance-stats">
+                <div class="stat">
+                    <span class="stat-label">Services:</span>
+                    <span class="stat-value">{{ instance.services|length if instance.services else 0 }}</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-label">Aktiv:</span>
+                    <span class="stat-value" id="active-{{ instance.filename }}">--</span>
+                </div>
+            </div>
+            
+            <div class="instance-services-preview">
+                {% if instance.services %}
+                    {% for service_id, service_config in instance.services.items() %}
+                        {% if service_config.enabled %}
+                        <span class="service-tag">{{ service_id }}</span>
+                        {% endif %}
+                    {% endfor %}
+                {% endif %}
+            </div>
+            
+            <div class="instance-actions">
+                <button class="btn btn-small btn-success" onclick="launchInstance(event, '{{ instance.filename }}')">
+                    ▶️ Starten
+                </button>
+                <button class="btn btn-small btn-secondary" onclick="editInstanceModal(event, '{{ instance.filename }}')">
+                    ✏️ Bearbeiten
+                </button>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+</div>
+
+<!-- Instance Create/Edit Modal -->
+<div class="modal" id="create-instance-modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2 id="modalTitle">Neue Instanz</h2>
+            <button class="close-btn" onclick="closeModal()">&times;</button>
+        </div>
+        
+        <form id="create-instance-form">
+            <div class="modal-form-body">
+                <div class="form-group">
+                    <label for="instance_name">Name *</label>
+                    <input type="text" id="instance_name" name="name" class="form-input" placeholder="z.B. Production, Development..." required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="instance_description">Beschreibung</label>
+                    <textarea id="instance_description" name="description" class="form-input" rows="2" placeholder="Wofür wird diese Instanz genutzt?"></textarea>
+                </div>
+                
+                <div class="form-group">
+                    <label>Services auswählen</label>
+                    <div class="service-checkboxes"></div>
+                </div>
+            </div>
+            
+            <div class="form-actions">
+                <button type="button" id="modal-delete-btn" class="btn btn-danger" style="display: none; margin-right: auto;">🗑️ Löschen</button>
+                <button type="button" class="btn btn-secondary" onclick="closeModal()">Abbrechen</button>
+                <button type="button" class="btn btn-primary" onclick="saveInstanceFromIndex()">➡️ Weiter: Configs</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Config Preview/Edit Modal -->
+<div class="modal" id="config-preview-modal" style="display: none;">
+    <div class="modal-content" style="max-width: 980px; width: 96%;">
+        <div class="modal-header">
+            <h2>Config Vorschau vor Erstellung</h2>
+            <button class="close-btn" onclick="closeConfigPreviewModal()">&times;</button>
+        </div>
+
+        <div class="modal-form-body" style="max-height: 72vh; overflow: auto;">
+            <div id="config-preview-meta" style="margin-bottom: 1rem; color: var(--text-muted);"></div>
+            <div style="display:flex;gap:0.5rem;margin-bottom:1rem;">
+                <button type="button" class="btn btn-primary" id="btn-mode-simple" onclick="switchConfigMode('simple')" style="flex:1;">🟢 Simple</button>
+                <button type="button" class="btn btn-secondary" id="btn-mode-expert" onclick="switchConfigMode('expert')" style="flex:1;">🔧 Experten-Modus</button>
+            </div>
+            <div id="port-conflict-summary" style="margin-bottom: 1rem;"></div>
+            <div id="config-simple-container"></div>
+            <div id="config-editors-container"></div>
+        </div>
+
+        <div class="form-actions">
+            <button type="button" class="btn btn-secondary" onclick="backToCreateModal()">⬅️ Zurück</button>
+            <button type="button" class="btn btn-primary" onclick="confirmSaveFromConfigPreview()">✅ Instanz erstellen</button>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+// ==================== SERVICE DEFINITIONS CACHE ====================
+var serviceDefinitions = {}; // from config.json
+// currentEditingInstanceName is declared as var in main.js — just reset it here
+currentEditingInstanceName = null;
+var pendingInstanceDraft = null;
+var pendingServiceConfigs = {};
+var usedPortsRegistry = {};
+var usedAudioRegistry = {};
+
+// Load service definitions from config
+async function loadServiceDefinitions() {
+    try {
+        const result = await apiCall('/api/config/get');
+        if (result && result.config && result.config.services) {
+            serviceDefinitions = result.config.services;
+        }
+    } catch (error) {
+        console.error('Error loading service definitions:', error);
+    }
+    return serviceDefinitions;
+}
+
+// ==================== NAVIGATION ====================
+
+// Navigate to instance dashboard
+function goToInstance(instanceName) {
+    location.href = `/instance/${instanceName}/dashboard`;
+}
+
+// ==================== INSTANCE ACTIONS ====================
+
+// Launch instance (start auto-start services) then navigate
+async function launchInstance(event, instanceName) {
+    event.stopPropagation();
+    
+    const btn = event.target.closest('button');
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '⏳ Startet...';
+    }
+    
+    showNotification('Instanz wird gestartet...', 'info');
+    try {
+        const result = await apiCall(`/api/instance/start/${instanceName}`, {
+            method: 'POST'
+        });
+        if (result && result.success) {
+            showNotification(`✅ Instanz gestartet!`, 'success');
+            setTimeout(() => goToInstance(instanceName), 800);
+        } else {
+            showNotification(`❌ Fehler: ${result.error || 'Unbekannter Fehler'}`, 'error');
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = '▶️ Starten';
+            }
+        }
+    } catch (error) {
+        showNotification(`❌ Fehler: ${error.message}`, 'error');
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '▶️ Starten';
+        }
+    }
+}
+
+// Delete instance
+async function deleteInstanceFromIndex(instanceName) {
+    if (!confirm(`Instanz "${instanceName}" wirklich löschen?\n\nAlle laufenden Services werden gestoppt und alle Konfigurationsdateien gelöscht.`)) return;
+    try {
+        const result = await apiCall(`/api/instance/delete/${instanceName}`, {
+            method: 'DELETE'
+        });
+        if (result && result.success) {
+            let msg = '✅ Instanz gelöscht!';
+            if (result.stopped_services && result.stopped_services.length > 0) {
+                msg += ` (${result.stopped_services.length} Services gestoppt: ${result.stopped_services.join(', ')})`;
+            }
+            showNotification(msg, 'success');
+            setTimeout(() => location.reload(), 500);
+        } else {
+            showNotification(`❌ Fehler: ${result.error || 'Unbekannter Fehler'}`, 'error');
+        }
+    } catch (error) {
+        showNotification(`❌ Fehler: ${error.message}`, 'error');
+    }
+}
+
+// ==================== MODAL: SERVICE CHECKBOXES ====================
+
+function renderServiceCheckboxes(container, instanceServices) {
+    container.innerHTML = '';
+    
+    if (Object.keys(serviceDefinitions).length === 0) {
+        container.innerHTML = '<p style="color: var(--text-muted);">Keine Services verfügbar</p>';
+        return;
+    }
+    
+    Object.entries(serviceDefinitions).forEach(([serviceId, serviceDef]) => {
+        const serviceConfig = instanceServices ? instanceServices[serviceId] : null;
+        const isEnabled = serviceConfig ? serviceConfig.enabled : true;
+        const isAutoStart = serviceConfig ? serviceConfig.auto_start : false;
+        const displayName = serviceDef.name || serviceId;
+        const icon = serviceDef.icon || '⚙️';
+        const color = serviceDef.color || '#888';
+        
+        const row = document.createElement('label');
+        row.className = 'service-checkbox';
+        row.innerHTML = `
+            <div style="display: flex; gap: 1rem; align-items: center; padding: 0.5rem 0;">
+                <div style="display: flex; align-items: center; gap: 0.5rem; flex: 1;">
+                    <input type="checkbox" name="service_${serviceId}" value="${serviceId}" ${isEnabled ? 'checked' : ''}>
+                    <span style="color: ${color}; font-size: 1.1em;">${icon}</span>
+                    <span>${displayName}</span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 0.3rem;">
+                    <input type="checkbox" name="autostart_${serviceId}" value="${serviceId}" class="autostart-checkbox" ${isAutoStart ? 'checked' : ''} title="Auto-Start">
+                    <small style="color: var(--text-muted);">Auto-Start</small>
+                </div>
+            </div>
+        `;
+        container.appendChild(row);
+    });
+}
+
+// ==================== MODAL: CREATE / EDIT ====================
+
+async function createInstanceFromIndex() {
+    try {
+        currentEditingInstanceName = null;
+        
+        // Load service definitions
+        await loadServiceDefinitions();
+        
+        // Clear form
+        const form = document.getElementById('create-instance-form');
+        if (form) {
+            form.reset();
+        }
+        const title = document.getElementById('modalTitle');
+        if (title) title.textContent = 'Neue Instanz erstellen';
+        
+        // Populate service checkboxes (all enabled by default, no auto-start)
+        const checkboxesContainer = document.querySelector('.service-checkboxes');
+        if (checkboxesContainer) {
+            renderServiceCheckboxes(checkboxesContainer, null);
+        }
+        
+        // Hide delete button for new instances
+        const deleteBtn = document.getElementById('modal-delete-btn');
+        if (deleteBtn) deleteBtn.style.display = 'none';
+    } catch (error) {
+        console.error('Error preparing modal:', error);
+    }
+    
+    // ALWAYS show modal, even if something above failed
+    const modal = document.getElementById('create-instance-modal');
+    if (modal) {
+        modal.style.display = 'flex';
+    } else {
+        alert('Modal element nicht gefunden!');
+    }
+}
+
+async function editInstanceModal(event, instanceName) {
+    event.stopPropagation();
+    currentEditingInstanceName = instanceName;
+    
+    try {
+        // Load service definitions + instance data in parallel
+        const [_, instanceResult] = await Promise.all([
+            loadServiceDefinitions(),
+            apiCall(`/api/instance/get/${instanceName}`)
+        ]);
+        
+        const instance = instanceResult || {};
+        
+        // Set form values
+        const form = document.getElementById('create-instance-form');
+        if (form) {
+            const nameInput = form.querySelector('[name="name"]');
+            const descInput = form.querySelector('[name="description"]');
+            if (nameInput) nameInput.value = instance.name || '';
+            if (descInput) descInput.value = instance.description || '';
+        }
+        const title = document.getElementById('modalTitle');
+        if (title) title.textContent = `Bearbeite: ${instance.name || instanceName}`;
+        
+        // Populate service checkboxes with instance-specific settings
+        const checkboxesContainer = document.querySelector('.service-checkboxes');
+        if (checkboxesContainer) {
+            renderServiceCheckboxes(checkboxesContainer, instance.services || {});
+        }
+        
+        // Show delete button for existing instances
+        const deleteBtn = document.getElementById('modal-delete-btn');
+        if (deleteBtn) {
+            deleteBtn.style.display = 'inline-flex';
+            deleteBtn.onclick = () => { closeModal(); deleteInstanceFromIndex(instanceName); };
+        }
+    } catch (error) {
+        console.error('Error loading instance:', error);
+    }
+    
+    // ALWAYS show modal
+    const modal = document.getElementById('create-instance-modal');
+    if (modal) {
+        modal.style.display = 'flex';
+    }
+}
+
+// ==================== MODAL: SAVE ====================
+
+async function saveInstanceFromIndex() {
+    return openConfigPreviewModal();
+}
+
+function collectInstanceDraftFromForm() {
+    const form = document.getElementById('create-instance-form');
+    if (!form) return null;
+    
+    const name = form.querySelector('input[name="name"]').value.trim();
+    const description = form.querySelector('textarea[name="description"]').value.trim();
+    
+    if (!name) {
+        showNotification('❌ Name ist erforderlich', 'error');
+        return null;
+    }
+    
+    // Filename: use existing or generate from name
+    const filename = currentEditingInstanceName || name.toLowerCase().replace(/[^a-z0-9_-]/g, '_');
+    
+    // Collect services
+    const services = {};
+    const checkboxes = document.querySelectorAll('.service-checkboxes input[type="checkbox"]');
+    
+    checkboxes.forEach(cb => {
+        if (cb.name.startsWith('service_')) {
+            const serviceId = cb.value;
+            services[serviceId] = services[serviceId] || { enabled: false, auto_start: false };
+            services[serviceId].enabled = cb.checked;
+        }
+        if (cb.name.startsWith('autostart_')) {
+            const serviceId = cb.value;
+            services[serviceId] = services[serviceId] || { enabled: false, auto_start: false };
+            services[serviceId].auto_start = cb.checked;
+        }
+    });
+    
+    const instanceData = {
+        filename: filename,
+        name: name,
+        description: description,
+        services: services,
+        config_overrides: {}
+    };
+
+    return instanceData;
+}
+
+function getServicePortFromConfig(config) {
+    if (!config || typeof config !== 'object') return null;
+    const direct = config.port;
+    if (typeof direct === 'number') return direct;
+    if (typeof direct === 'string' && /^\d+$/.test(direct)) return Number(direct);
+    const serverPort = config.server && config.server.port;
+    if (typeof serverPort === 'number') return serverPort;
+    if (typeof serverPort === 'string' && /^\d+$/.test(serverPort)) return Number(serverPort);
+    return null;
+}
+
+function getEnabledServiceIds(services) {
+    return Object.entries(services || {})
+        .filter(([, cfg]) => cfg && cfg.enabled)
+        .map(([serviceId]) => serviceId);
+}
+
+function getConflictsForService(serviceId, port) {
+    if (!port) return [];
+    const fromOtherInstances = usedPortsRegistry[String(port)] || [];
+    const fromCurrentDraft = [];
+
+    Object.entries(pendingServiceConfigs || {}).forEach(([otherServiceId, cfg]) => {
+        if (otherServiceId === serviceId) return;
+        const otherPort = getServicePortFromConfig(cfg);
+        if (otherPort === port) {
+            fromCurrentDraft.push({ instance: '(neu)', service: otherServiceId });
+        }
+    });
+
+    return [...fromOtherInstances, ...fromCurrentDraft];
+}
+
+function renderPortConflictSummary() {
+    const summary = document.getElementById('port-conflict-summary');
+    if (!summary) return;
+
+    const lines = [];
+    Object.entries(pendingServiceConfigs || {}).forEach(([serviceId, cfg]) => {
+        const port = getServicePortFromConfig(cfg);
+        if (!port) return;
+        const conflicts = getConflictsForService(serviceId, port);
+        if (conflicts.length > 0) {
+            const owners = conflicts.map(c => `${c.instance}/${c.service}`).join(', ');
+            lines.push(`⚠️ ${serviceId}: Port ${port} ist bereits belegt (${owners})`);
+        }
+    });
+
+    if (lines.length === 0) {
+        summary.innerHTML = '<div style="padding:0.7rem;border-radius:8px;background:rgba(46,204,113,0.12);color:#2ecc71;">✅ Keine Port-Konflikte erkannt.</div>';
+        return;
+    }
+
+    summary.innerHTML = `
+        <div style="padding:0.7rem;border-radius:8px;background:rgba(231,76,60,0.14);color:#ff8f8f;">
+            <strong>Port-Konflikte gefunden:</strong><br>${lines.join('<br>')}
+        </div>
+    `;
+}
+
+function updateServiceConflictLabel(serviceId) {
+    const label = document.getElementById(`port-conflict-${serviceId}`);
+    if (!label) return;
+
+    const cfg = pendingServiceConfigs[serviceId] || {};
+    const port = getServicePortFromConfig(cfg);
+    const conflicts = port ? getConflictsForService(serviceId, port) : [];
+
+    if (conflicts.length > 0) {
+        label.style.color = '#ff8f8f';
+        label.textContent = `⚠️ Port ${port} bereits genutzt von ${conflicts.map(c => `${c.instance}/${c.service}`).join(', ')}`;
+    } else {
+        label.style.color = 'var(--text-muted)';
+        label.textContent = `Port: ${port ?? 'nicht gesetzt'}`;
+    }
+}
+
+function refreshAllServiceConflictLabels() {
+    Object.keys(pendingServiceConfigs || {}).forEach(updateServiceConflictLabel);
+}
+
+var configMode = 'simple';
+
+function setAudioMode(serviceId, mode) {
+    audioModePerService[serviceId] = mode;
+    if (mode === 'virtual') {
+        const instanceName = (pendingInstanceDraft && pendingInstanceDraft.name) || '';
+        if (!instanceName) {
+            showNotification('⚠️ Bitte zuerst einen Instanznamen eingeben', 'error');
+            renderSimpleEditors();
+            return;
+        }
+        handleVirtualAudioAssignment(instanceName).then(assignment => {
+            if (assignment) {
+                // Auto-fill both services' audio fields with the cable pair
+                if (pendingServiceConfigs.main_server) {
+                    setNestedValue(pendingServiceConfigs.main_server, 'microphone.device_name', assignment.read_from);
+                }
+                if (pendingServiceConfigs.text_to_speech) {
+                    setNestedValue(pendingServiceConfigs.text_to_speech, 'voicemod.output_name_substring', assignment.write_to);
+                }
+            }
+            renderSimpleEditors();
+        });
+    }
+    renderSimpleEditors();
+}
+
+// SIMPLE_FIELDS, audioDevices, getNestedValue, setNestedValue, buildSimpleFieldsHtml
+// are defined in static/js/simple_fields.js (shared with instance_config.html)
+
+function switchConfigMode(mode) {
+    configMode = mode;
+    const btnSimple = document.getElementById('btn-mode-simple');
+    const btnExpert = document.getElementById('btn-mode-expert');
+    const simpleContainer = document.getElementById('config-simple-container');
+    const expertContainer = document.getElementById('config-editors-container');
+
+    if (mode === 'simple') {
+        btnSimple.className = 'btn btn-primary';
+        btnExpert.className = 'btn btn-secondary';
+        if (simpleContainer) simpleContainer.style.display = '';
+        if (expertContainer) expertContainer.style.display = 'none';
+        renderSimpleEditors();
+    } else {
+        btnSimple.className = 'btn btn-secondary';
+        btnExpert.className = 'btn btn-primary';
+        if (simpleContainer) simpleContainer.style.display = 'none';
+        if (expertContainer) expertContainer.style.display = '';
+        renderConfigEditors();
+    }
+}
+
+function renderSimpleEditors() {
+    const container = document.getElementById('config-simple-container');
+    if (!container) return;
+    container.innerHTML = '';
+
+    Object.entries(pendingServiceConfigs || {}).forEach(([serviceId, cfg]) => {
+        const card = document.createElement('div');
+        card.style.cssText = 'margin-bottom:1rem;padding:0.85rem;border:1px solid var(--border-color);border-radius:8px;';
+
+        const fieldsHtml = buildSimpleFieldsHtml(serviceId, cfg, {
+            usedAudioRegistry: usedAudioRegistry,
+            allConfigs: pendingServiceConfigs,
+            onChangeCallback: 'simpleFieldChanged',
+            getConflicts: getConflictsForService,
+            instanceName: (pendingInstanceDraft && pendingInstanceDraft.name) || '',
+        });
+
+        card.innerHTML = `
+            <h3 style="margin:0 0 0.5rem 0;">${serviceId}</h3>
+            ${fieldsHtml}
+        `;
+        container.appendChild(card);
+    });
+}
+
+function simpleFieldChanged(serviceId, path, value, type) {
+    const cfg = pendingServiceConfigs[serviceId];
+    if (!cfg) return;
+
+    if (type === 'number') value = Number(value);
+    if (type === 'bool') value = Boolean(value);
+
+    setNestedValue(cfg, path, value);
+    pendingServiceConfigs[serviceId] = cfg;
+
+    // If port changed, auto-update service URLs in main_server config
+    if (path === 'server.port' && serviceId !== 'main_server') {
+        const msCfg = pendingServiceConfigs['main_server'];
+        if (msCfg && msCfg.services) {
+            const urlKey = serviceId;
+            const currentUrl = msCfg.services[urlKey];
+            if (typeof currentUrl === 'string') {
+                msCfg.services[urlKey] = currentUrl.replace(/:\d+$/, ':' + value);
+            }
+        }
+    }
+
+    // If ollama port or host changed, update ki_chat ollama.url
+    if (serviceId === 'ollama' && (path === 'server.port' || path === 'server.host')) {
+        const chatCfg = pendingServiceConfigs['ki_chat'];
+        if (chatCfg && chatCfg.ollama && chatCfg.ollama.url) {
+            const ollamaCfg = pendingServiceConfigs['ollama'];
+            const oHost = getNestedValue(ollamaCfg, 'server.host') || '127.0.0.1';
+            const oPort = getNestedValue(ollamaCfg, 'server.port') || 11434;
+            // Replace host:port in the URL, keep the path (e.g. /api/chat)
+            chatCfg.ollama.url = chatCfg.ollama.url.replace(
+                /\/\/[^/]+/,
+                '//' + oHost + ':' + oPort
+            );
+        }
+    }
+
+    renderPortConflictSummary();
+    refreshAllServiceConflictLabels();
+    // Re-render simple to update linked warnings
+    renderSimpleEditors();
+}
+
+function simpleFieldChanged_multi(serviceId, path, fieldId) {
+    const cfg = pendingServiceConfigs[serviceId];
+    if (!cfg) return;
+    const values = collectMultiSelectValues(fieldId);
+    setNestedValue(cfg, path, values);
+    pendingServiceConfigs[serviceId] = cfg;
+}
+
+function renderConfigEditors() {
+    const container = document.getElementById('config-editors-container');
+    if (!container) return;
+    container.innerHTML = '';
+
+    Object.entries(pendingServiceConfigs || {}).forEach(([serviceId, cfg]) => {
+        const port = getServicePortFromConfig(cfg);
+        const conflicts = port ? getConflictsForService(serviceId, port) : [];
+        const conflictHtml = conflicts.length > 0
+            ? `<div id="port-conflict-${serviceId}" style="margin-bottom:0.45rem;color:#ff8f8f;">⚠️ Port ${port} bereits genutzt von ${conflicts.map(c => `${c.instance}/${c.service}`).join(', ')}</div>`
+            : `<div id="port-conflict-${serviceId}" style="margin-bottom:0.45rem;color:var(--text-muted);">Port: ${port ?? 'nicht gesetzt'}</div>`;
+
+        const card = document.createElement('div');
+        card.style.marginBottom = '1rem';
+        card.style.padding = '0.75rem';
+        card.style.border = '1px solid var(--border-color)';
+        card.style.borderRadius = '8px';
+
+        card.innerHTML = `
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:1rem;">
+                <h3 style="margin:0;">${serviceId}</h3>
+                <span id="json-status-${serviceId}" style="font-size:0.85em;font-weight:600;color:#2ecc71;">✅ Valid JSON</span>
+            </div>
+            ${conflictHtml}
+            <textarea id="cfg-editor-${serviceId}" rows="12" class="form-input" style="font-family:monospace;white-space:pre;border:2px solid #2ecc71;outline:none;transition:border-color 0.2s,box-shadow 0.2s;box-shadow:0 0 6px rgba(46,204,113,0.25);">${JSON.stringify(cfg, null, 2)}</textarea>
+        `;
+
+        container.appendChild(card);
+
+        const textarea = card.querySelector('textarea');
+        textarea.addEventListener('input', () => {
+            const statusEl = document.getElementById(`json-status-${serviceId}`);
+            try {
+                const parsed = JSON.parse(textarea.value);
+                pendingServiceConfigs[serviceId] = parsed;
+                textarea.style.borderColor = '#2ecc71';
+                textarea.style.boxShadow = '0 0 6px rgba(46,204,113,0.25)';
+                if (statusEl) { statusEl.style.color = '#2ecc71'; statusEl.textContent = '✅ Valid JSON'; }
+                renderPortConflictSummary();
+                refreshAllServiceConflictLabels();
+            } catch (e) {
+                textarea.style.borderColor = '#e74c3c';
+                textarea.style.boxShadow = '0 0 6px rgba(231,76,60,0.3)';
+                if (statusEl) { statusEl.style.color = '#e74c3c'; statusEl.textContent = '❌ ' + e.message; }
+            }
+        });
+    });
+}
+
+async function openConfigPreviewModal() {
+    const draft = collectInstanceDraftFromForm();
+    if (!draft) return;
+
+    const allServiceIds = Object.keys(draft.services || {});
+    const enabledServiceIds = getEnabledServiceIds(draft.services);
+    if (allServiceIds.length === 0) {
+        showNotification('❌ Keine Services gefunden', 'error');
+        return;
+    }
+
+    try {
+        await loadAudioDevices();
+        const preview = await apiCall('/api/instance/configs/preview', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                services: draft.services,
+                editing_instance: currentEditingInstanceName || null
+            })
+        });
+
+        pendingInstanceDraft = draft;
+        usedPortsRegistry = preview.used_ports || {};
+        usedAudioRegistry = preview.used_audio || {};
+        pendingServiceConfigs = preview.configs || {};
+
+        const meta = document.getElementById('config-preview-meta');
+        if (meta) {
+            const enabledText = enabledServiceIds.length > 0 ? enabledServiceIds.join(', ') : 'keine';
+            meta.textContent = `Instanz: ${draft.name} | Alle Configs: ${allServiceIds.join(', ')} | Aktiviert: ${enabledText}`;
+        }
+
+        renderPortConflictSummary();
+        switchConfigMode('simple');
+
+        const createModal = document.getElementById('create-instance-modal');
+        const cfgModal = document.getElementById('config-preview-modal');
+        if (createModal) createModal.style.display = 'none';
+        if (cfgModal) cfgModal.style.display = 'flex';
+    } catch (error) {
+        showNotification(`❌ Config-Vorschau fehlgeschlagen: ${error.message}`, 'error');
+    }
+}
+
+function backToCreateModal() {
+    const createModal = document.getElementById('create-instance-modal');
+    const cfgModal = document.getElementById('config-preview-modal');
+    if (cfgModal) cfgModal.style.display = 'none';
+    if (createModal) createModal.style.display = 'flex';
+}
+
+function closeConfigPreviewModal() {
+    const cfgModal = document.getElementById('config-preview-modal');
+    if (cfgModal) cfgModal.style.display = 'none';
+}
+
+async function confirmSaveFromConfigPreview() {
+    if (!pendingInstanceDraft) {
+        showNotification('❌ Kein Instanz-Entwurf vorhanden', 'error');
+        return;
+    }
+
+    // Collect configs: from Expert textareas if available, otherwise from pendingServiceConfigs (Simple mode)
+    const parsedConfigs = {};
+    for (const serviceId of Object.keys(pendingServiceConfigs || {})) {
+        if (configMode === 'expert') {
+            const editor = document.getElementById(`cfg-editor-${serviceId}`);
+            if (editor) {
+                try {
+                    parsedConfigs[serviceId] = JSON.parse(editor.value);
+                } catch (error) {
+                    showNotification(`❌ Ungültiges JSON bei ${serviceId}: ${error.message}`, 'error');
+                    return;
+                }
+                continue;
+            }
+        }
+        // Simple mode or no editor: use in-memory config
+        parsedConfigs[serviceId] = pendingServiceConfigs[serviceId];
+    }
+
+    const instanceData = {
+        ...pendingInstanceDraft,
+        service_runtime_configs: parsedConfigs
+    };
+    
+    try {
+        const result = await apiCall('/api/instance/save', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(instanceData)
+        });
+        
+        if (result && result.success) {
+            closeConfigPreviewModal();
+            closeModal();
+            showNotification('✅ Instanz gespeichert!', 'success');
+            setTimeout(() => location.reload(), 500);
+        } else {
+            showNotification(`❌ Fehler: ${result.error || 'Unbekannter Fehler'}`, 'error');
+        }
+    } catch (error) {
+        showNotification(`❌ Fehler: ${error.message}`, 'error');
+    }
+}
+
+// ==================== MODAL: CLOSE ====================
+
+function closeModal() {
+    const modal = document.getElementById('create-instance-modal');
+    if (modal) modal.style.display = 'none';
+    closeConfigPreviewModal();
+    currentEditingInstanceName = null;
+    pendingInstanceDraft = null;
+    pendingServiceConfigs = {};
+    usedPortsRegistry = {};
+    usedAudioRegistry = {};
+}
+
+// Close modal on backdrop click
+document.addEventListener('DOMContentLoaded', () => {
+    const modal = document.getElementById('create-instance-modal');
+    const cfgModal = document.getElementById('config-preview-modal');
+    if (modal) {
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) closeModal();
+        });
+    }
+    if (cfgModal) {
+        cfgModal.addEventListener('click', (e) => {
+            if (e.target === cfgModal) closeConfigPreviewModal();
+        });
+    }
+});
+
+// ==================== LIVE STATUS UPDATES ====================
+
+async function updateInstanceStatuses() {
+    try {
+        const statuses = await getServicesStatus();
+        
+        // Count running services per instance
+        document.querySelectorAll('.instance-selector-card').forEach(card => {
+            const activeBadge = card.querySelector('[id^="active-"]');
+            if (!activeBadge) return;
+            const instanceName = activeBadge.id.replace('active-', '');
+            
+            // We need instance data to know which services belong to it
+            // For now show total running count
+            let runningCount = 0;
+            Object.values(statuses).forEach(s => {
+                if (s.status === 'running') runningCount++;
+            });
+            activeBadge.textContent = runningCount;
+            
+            // Update status indicator
+            const statusSpan = card.querySelector('.instance-status');
+            if (statusSpan) {
+                statusSpan.textContent = runningCount > 0 ? '🟢' : '⚪';
+                statusSpan.title = runningCount > 0 ? `${runningCount} Services laufen` : 'Gestoppt';
+            }
+        });
+    } catch (error) {
+        console.error('Status update error:', error);
+    }
+}
+
+// Poll status every 3 seconds
+setInterval(updateInstanceStatuses, 3000);
+updateInstanceStatuses();
+
+// Explicitly export all onclick-used functions to window
+window.createInstanceFromIndex = createInstanceFromIndex;
+window.editInstanceModal = editInstanceModal;
+window.saveInstanceFromIndex = saveInstanceFromIndex;
+window.openConfigPreviewModal = openConfigPreviewModal;
+window.confirmSaveFromConfigPreview = confirmSaveFromConfigPreview;
+window.backToCreateModal = backToCreateModal;
+window.closeConfigPreviewModal = closeConfigPreviewModal;
+window.switchConfigMode = switchConfigMode;
+window.simpleFieldChanged = simpleFieldChanged;
+window.closeModal = closeModal;
+window.goToInstance = goToInstance;
+window.launchInstance = launchInstance;
+window.deleteInstanceFromIndex = deleteInstanceFromIndex;
+</script>
+{% endblock %}
