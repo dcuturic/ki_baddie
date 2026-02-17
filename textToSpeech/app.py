@@ -59,6 +59,10 @@ OSC_ENABLED = osc_cfg.get("enabled", True)
 services_cfg = CONFIG.get("services", {})
 VROID_EMOTION_URL = services_cfg.get("vroid_emotion", "http://127.0.0.1:5004")
 MAIN_SERVER_URL = services_cfg.get("main_server", "http://127.0.0.1:5000")
+WEB_AVATAR_URL = services_cfg.get("web_avatar", "http://127.0.0.1:5006")
+
+# View model: "vseeface" (OSC lipsync) or "web_avatar" (HTTP lipsync)
+VIEW_MODEL = CONFIG.get("view_model", "vseeface").strip().lower()
 
 voicemod_cfg = CONFIG.get("voicemod", {})
 VOICEMOD_OUTPUT_NAME_SUBSTRING = voicemod_cfg.get("output_name_substring", "cable input")
@@ -318,8 +322,13 @@ osc_client = SimpleUDPClient(OSC_HOST, OSC_PORT) if OSC_ENABLED else None
 CLEAR_BEFORE_EACH = True
 VISEMES = [("A", 1.0), ("O", 0.9), ("E", 0.6), ("I", 0.5), ("U", 0.4)]
 
+print(f"[Lipsync] VIEW_MODEL = {VIEW_MODEL!r}", flush=True)
+
 
 def set_viseme(key: str, value: float):
+    """Set a single viseme value (VSF mode only, web_avatar uses batched send)."""
+    if VIEW_MODEL == "web_avatar":
+        return  # web_avatar uses batch send in lipsync_from_audio
     if not osc_client:
         return
     osc_client.send_message("/VMC/Ext/Blend/Val", [key, float(value)])
@@ -327,11 +336,23 @@ def set_viseme(key: str, value: float):
 
 
 def clear_mouth():
+    """Clear all visemes."""
+    if VIEW_MODEL == "web_avatar":
+        _send_blend_to_web_avatar({k: 0.0 for k, _ in VISEMES})
+        return
     if not osc_client:
         return
     for k, _ in VISEMES:
         osc_client.send_message("/VMC/Ext/Blend/Val", [k, 0.0])
     osc_client.send_message("/VMC/Ext/Blend/Apply", 1)
+
+
+def _send_blend_to_web_avatar(blend_data: dict):
+    """Send batched blend/viseme data to web_avatar via HTTP."""
+    try:
+        requests.post(f"{WEB_AVATAR_URL}/api/blend", json=blend_data, timeout=2)
+    except Exception:
+        pass
 
 
 def find_output_device_id(name_substring: str) -> int:
@@ -472,6 +493,96 @@ def save_wav_file(pcm16: np.ndarray, sr: int, ch: int, path: str):
         f.write(pcm16_to_wav_bytes(pcm16, sr, ch))
 
 
+# =================================================
+# VIRTUAL AUDIO OUTPUT STREAM (OBS / External Apps)
+# =================================================
+import queue as _queue
+import base64 as _base64
+
+# Config for virtual audio stream
+_vas_cfg = CONFIG.get("virtual_audio_stream", {})
+VIRTUAL_AUDIO_ENABLED = _vas_cfg.get("enabled", True)
+
+class VirtualAudioStream:
+    """
+    Virtueller Audio-Output: Streamt TTS-Audio in Echtzeit an beliebig viele
+    Clients (OBS Browser Source, Media Source, VLC, etc.) — kein VB-Cable nötig.
+    """
+
+    def __init__(self, sample_rate: int = 24000, channels: int = 1):
+        self.sample_rate = sample_rate
+        self.channels = channels
+        self._clients: Dict[int, _queue.Queue] = {}
+        self._lock = threading.Lock()
+        self._counter = 0
+        # Letzte Audio-Clip ID + Daten (für Polling)
+        self._clip_id = 0
+        self._latest_wav: bytes = b''
+
+    def add_client(self) -> tuple:
+        """Registriert einen neuen Stream-Client. Gibt (client_id, queue) zurück."""
+        with self._lock:
+            self._counter += 1
+            cid = self._counter
+            q = _queue.Queue(maxsize=50)
+            self._clients[cid] = q
+            print(f"[VirtualAudio] Client #{cid} connected ({len(self._clients)} total)", flush=True)
+            return cid, q
+
+    def remove_client(self, cid: int):
+        """Entfernt einen Stream-Client."""
+        with self._lock:
+            self._clients.pop(cid, None)
+            print(f"[VirtualAudio] Client #{cid} disconnected ({len(self._clients)} total)", flush=True)
+
+    def push(self, wav_f32: np.ndarray, sr: int):
+        """Pusht Audio-Daten an alle verbundenen Clients als komplette WAV-Bytes."""
+        # Resample falls nötig
+        audio = wav_f32
+        if sr != self.sample_rate:
+            audio = librosa.resample(wav_f32, orig_sr=sr, target_sr=self.sample_rate)
+
+        pcm16 = float32_to_int16(audio)
+        wav_bytes = pcm16_to_wav_bytes(pcm16, self.sample_rate, self.channels)
+
+        with self._lock:
+            self._clip_id += 1
+            self._latest_wav = wav_bytes
+            clients = dict(self._clients)
+
+        if not clients:
+            return
+
+        dead = []
+        for cid, q in clients.items():
+            try:
+                q.put_nowait(wav_bytes)
+            except _queue.Full:
+                dead.append(cid)
+                print(f"[VirtualAudio] Client #{cid} dropped (queue full)", flush=True)
+
+        if dead:
+            with self._lock:
+                for cid in dead:
+                    self._clients.pop(cid, None)
+
+    @property
+    def clip_id(self) -> int:
+        return self._clip_id
+
+    @property
+    def latest_wav(self) -> bytes:
+        return self._latest_wav
+
+    @property
+    def client_count(self) -> int:
+        return len(self._clients)
+
+
+# Globale Instanz
+_virtual_stream = VirtualAudioStream(sample_rate=XTTS_SR, channels=1)
+
+
 def compute_envelope(wav_f32: np.ndarray, sr: int, frame_ms: int = 20, hop_ms: int = 10):
     if wav_f32.ndim > 1:
         wav = wav_f32.mean(axis=1)
@@ -519,19 +630,30 @@ def lipsync_from_audio(wav_f32: np.ndarray, sr: int, stop_event: threading.Event
     env = np.where(env < gate, 0.0, (env - gate) / (1.0 - gate))
     env = smooth_attack_release(env, attack=0.02, release=0.08, dt=dt)
 
+    use_web_avatar = (VIEW_MODEL == "web_avatar")
+
     for v in env:
         if stop_event.is_set():
             break
 
         openness = float(np.clip(v, 0.0, 1.0))
 
-        if CLEAR_BEFORE_EACH:
-            clear_mouth()
-
-        set_viseme("A", openness)
-        if openness > 0.15:
-            set_viseme("O", openness * 0.35)
-            set_viseme("E", openness * 0.20)
+        if use_web_avatar:
+            # Batch all visemes in one HTTP request to web_avatar
+            blend = {"A": 0.0, "O": 0.0, "E": 0.0, "I": 0.0, "U": 0.0}
+            blend["A"] = openness
+            if openness > 0.15:
+                blend["O"] = openness * 0.35
+                blend["E"] = openness * 0.20
+            _send_blend_to_web_avatar(blend)
+        else:
+            # VSeeFace OSC mode
+            if CLEAR_BEFORE_EACH:
+                clear_mouth()
+            set_viseme("A", openness)
+            if openness > 0.15:
+                set_viseme("O", openness * 0.35)
+                set_viseme("E", openness * 0.20)
 
         time.sleep(dt)
 
@@ -864,11 +986,16 @@ def play_audio_blocking(wav_f32: np.ndarray, sr: int, emotion: str):
         except Exception:
             pass
 
+        # Virtual Audio Stream: push an alle verbundenen Clients (OBS etc.)
+        if VIRTUAL_AUDIO_ENABLED and _virtual_stream.client_count > 0:
+            try:
+                _virtual_stream.push(wav_f32, sr)
+            except Exception as _vas_e:
+                print(f"[VirtualAudio] Push error: {_vas_e}", flush=True)
+
         local_stop = threading.Event()
         lip_thread = threading.Thread(target=lipsync_from_audio, args=(wav_f32, sr, local_stop), daemon=True)
         lip_thread.start()
-
-        
 
         sd.stop()
 
@@ -952,6 +1079,12 @@ def health():
         "fx_loaded_emotions": fx_store.loaded_emotions(),
         "end_pad_ms": END_PAD_MS,
         "end_fade_ms": END_FADE_MS,
+        "virtual_audio_stream": {
+            "enabled": VIRTUAL_AUDIO_ENABLED,
+            "connected_clients": _virtual_stream.client_count,
+            "obs_browser_source_url": "/audio-stream/page",
+            "raw_stream_url": "/audio-stream",
+        },
     })
 
 
@@ -1076,6 +1209,414 @@ def tts():
         "end_pad_ms": END_PAD_MS,
         "end_fade_ms": END_FADE_MS,
     })
+
+
+# =================================================
+# VIRTUAL AUDIO STREAM ENDPOINTS
+# =================================================
+
+@app.get("/audio-stream/status")
+def audio_stream_status():
+    """Status des virtuellen Audio-Streams."""
+    return jsonify({
+        "ok": True,
+        "enabled": VIRTUAL_AUDIO_ENABLED,
+        "connected_clients": _virtual_stream.client_count,
+        "sample_rate": _virtual_stream.sample_rate,
+        "channels": _virtual_stream.channels,
+        "clip_id": _virtual_stream.clip_id,
+    })
+
+
+@app.get("/audio-stream/clip")
+def audio_stream_clip():
+    """
+    Gibt den neuesten Audio-Clip als WAV zurück.
+    Query-Param: ?after=N — wartet (long-poll) bis clip_id > N.
+    Ideal für einfaches Polling oder Fetch-basierte Clients.
+    """
+    if not VIRTUAL_AUDIO_ENABLED:
+        return jsonify({"ok": False, "error": "Virtual audio stream disabled"}), 403
+
+    after = request.args.get('after', type=int, default=0)
+
+    if after > 0:
+        # Long-Poll: warte max 25s auf neuen Clip
+        waited = 0
+        while _virtual_stream.clip_id <= after and waited < 25:
+            time.sleep(0.15)
+            waited += 0.15
+
+        if _virtual_stream.clip_id <= after:
+            return jsonify({"ok": True, "clip_id": _virtual_stream.clip_id, "has_audio": False}), 204
+
+    wav = _virtual_stream.latest_wav
+    if not wav:
+        return jsonify({"ok": True, "clip_id": 0, "has_audio": False}), 204
+
+    return Response(
+        wav,
+        mimetype='audio/wav',
+        headers={
+            'Cache-Control': 'no-cache, no-store',
+            'X-Clip-Id': str(_virtual_stream.clip_id),
+        }
+    )
+
+
+@app.get("/audio-stream/events")
+def audio_stream_events():
+    """
+    Server-Sent Events (SSE) Stream.
+    Jedes Event enthält eine komplette WAV-Datei als Base64.
+    """
+    if not VIRTUAL_AUDIO_ENABLED:
+        return jsonify({"ok": False, "error": "Virtual audio stream disabled"}), 403
+
+    client_id, q = _virtual_stream.add_client()
+
+    def generate():
+        try:
+            yield "event: connected\ndata: {}\n\n"
+            while True:
+                try:
+                    wav_bytes = q.get(timeout=25)
+                    b64 = _base64.b64encode(wav_bytes).decode('ascii')
+                    yield f"event: audio\ndata: {b64}\n\n"
+                except _queue.Empty:
+                    yield ": keepalive\n\n"
+        except GeneratorExit:
+            pass
+        finally:
+            _virtual_stream.remove_client(client_id)
+
+    return Response(
+        generate(),
+        mimetype='text/event-stream',
+        headers={
+            'Cache-Control': 'no-cache',
+            'Connection': 'keep-alive',
+            'X-Accel-Buffering': 'no',
+        }
+    )
+
+
+# ---- OBS Browser Source / Audio Player Page ----
+_AUDIO_STREAM_PAGE_HTML = r"""<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<title>KI Virtual Audio Output</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: transparent;
+    font-family: 'Segoe UI', Tahoma, sans-serif;
+    color: #e0e0e0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+    overflow: hidden;
+  }
+  .container {
+    text-align: center;
+    padding: 20px 30px;
+    background: rgba(20, 20, 30, 0.85);
+    border-radius: 12px;
+    border: 1px solid rgba(100, 100, 255, 0.3);
+    min-width: 300px;
+  }
+  .status {
+    font-size: 14px;
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+  }
+  .dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    display: inline-block;
+    background: #555;
+    transition: background 0.3s;
+  }
+  .dot.connected { background: #4caf50; box-shadow: 0 0 6px #4caf50; }
+  .dot.playing   { background: #2196f3; box-shadow: 0 0 6px #2196f3; animation: pulse 0.6s infinite alternate; }
+  .dot.error     { background: #f44336; box-shadow: 0 0 6px #f44336; }
+  @keyframes pulse { to { opacity: 0.4; } }
+  .info { font-size: 11px; color: #888; margin-top: 6px; }
+  .volume-bar {
+    height: 4px;
+    background: rgba(255,255,255,0.1);
+    border-radius: 2px;
+    margin-top: 10px;
+    overflow: hidden;
+  }
+  .volume-fill {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, #4caf50, #2196f3);
+    border-radius: 2px;
+    transition: width 0.05s;
+  }
+  .mode-info {
+    font-size: 10px;
+    color: #666;
+    margin-top: 4px;
+  }
+  .start-btn {
+    display: none;
+    margin-top: 12px;
+    padding: 8px 20px;
+    background: #2196f3;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 13px;
+  }
+  .start-btn:hover { background: #1976d2; }
+</style>
+</head>
+<body>
+<div class="container" id="panel">
+  <div class="status">
+    <span class="dot" id="dot"></span>
+    <span id="statusText">Initialisiere...</span>
+  </div>
+  <div class="volume-bar"><div class="volume-fill" id="vol"></div></div>
+  <div class="info" id="info">Virtual Audio Output</div>
+  <div class="mode-info" id="modeInfo"></div>
+  <button class="start-btn" id="startBtn" onclick="startAudio()">Audio starten</button>
+</div>
+
+<script>
+const SAMPLE_RATE = """ + str(XTTS_SR) + r""";
+const BASE = window.location.origin;
+const params = new URLSearchParams(window.location.search);
+
+if (params.get('hide') === '1') document.getElementById('panel').style.display = 'none';
+
+const dot    = document.getElementById('dot');
+const stxt   = document.getElementById('statusText');
+const vol    = document.getElementById('vol');
+const info   = document.getElementById('info');
+const mInfo  = document.getElementById('modeInfo');
+const sBtn   = document.getElementById('startBtn');
+
+let audioCtx = null;
+let started  = false;
+let queue    = [];
+let playing  = false;
+let played   = 0;
+
+// --- Audio Context ---
+function initAudio() {
+  if (audioCtx) return audioCtx;
+  try {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: SAMPLE_RATE });
+    // Sofort resume (in OBS erlaubt, im Browser nach user-gesture)
+    audioCtx.resume();
+    return audioCtx;
+  } catch (e) {
+    console.error('AudioContext error:', e);
+    return null;
+  }
+}
+
+// --- Status ---
+function setStatus(cls, txt) {
+  dot.className = 'dot ' + cls;
+  stxt.textContent = txt;
+}
+function updateInfo() {
+  info.textContent = 'Clips: ' + played + ' | Queue: ' + queue.length;
+}
+
+// --- Audio Playback Queue ---
+async function playNext() {
+  if (queue.length === 0) {
+    playing = false;
+    vol.style.width = '0%';
+    setStatus('connected', 'Bereit - warte auf Audio...');
+    return;
+  }
+  playing = true;
+  setStatus('playing', 'Spielt...');
+  const wavBytes = queue.shift();
+  updateInfo();
+
+  try {
+    const ctx = initAudio();
+    if (!ctx) { playNext(); return; }
+    if (ctx.state === 'suspended') await ctx.resume();
+
+    const buf = await ctx.decodeAudioData(wavBytes.slice(0));
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+
+    const analyser = ctx.createAnalyser();
+    analyser.fftSize = 256;
+    src.connect(analyser);
+    analyser.connect(ctx.destination);
+
+    // Volume meter
+    const fdata = new Uint8Array(analyser.frequencyBinCount);
+    let animId = 0;
+    function drawVol() {
+      analyser.getByteFrequencyData(fdata);
+      let s = 0; for (let i = 0; i < fdata.length; i++) s += fdata[i];
+      vol.style.width = Math.min(100, (s / fdata.length) / 1.3) + '%';
+      animId = requestAnimationFrame(drawVol);
+    }
+    drawVol();
+
+    src.onended = () => {
+      cancelAnimationFrame(animId);
+      played++;
+      updateInfo();
+      playNext();
+    };
+    src.start(0);
+  } catch (e) {
+    console.error('Play error:', e);
+    playNext();
+  }
+}
+
+function enqueue(arrayBuffer) {
+  queue.push(arrayBuffer);
+  updateInfo();
+  if (!playing) playNext();
+}
+
+// --- SSE Mode (bevorzugt) ---
+function connectSSE() {
+  mInfo.textContent = 'Modus: SSE (Echtzeit)';
+  setStatus('', 'Verbinde SSE...');
+
+  const es = new EventSource(BASE + '/audio-stream/events');
+
+  es.addEventListener('connected', () => {
+    setStatus('connected', 'Verbunden - warte auf Audio...');
+  });
+
+  es.addEventListener('audio', (e) => {
+    try {
+      const bin = atob(e.data);
+      const ab  = new ArrayBuffer(bin.length);
+      const u8  = new Uint8Array(ab);
+      for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+      enqueue(ab);
+    } catch (err) {
+      console.error('SSE decode error:', err);
+    }
+  });
+
+  es.onerror = () => {
+    setStatus('error', 'Verbindung verloren...');
+    es.close();
+    setTimeout(connectSSE, 3000);
+  };
+}
+
+// --- Polling Mode (Fallback) ---
+async function pollLoop() {
+  mInfo.textContent = 'Modus: Polling';
+  let lastId = 0;
+  setStatus('connected', 'Polling aktiv...');
+
+  while (true) {
+    try {
+      const resp = await fetch(BASE + '/audio-stream/clip?after=' + lastId);
+      if (resp.status === 200) {
+        const newId = parseInt(resp.headers.get('X-Clip-Id') || '0', 10);
+        if (newId > lastId) {
+          lastId = newId;
+          const ab = await resp.arrayBuffer();
+          if (ab.byteLength > 44) enqueue(ab);
+        }
+      }
+      // Kurz warten falls 204 (kein neuer Clip)
+      if (resp.status === 204) await new Promise(r => setTimeout(r, 200));
+    } catch (e) {
+      setStatus('error', 'Polling Fehler...');
+      await new Promise(r => setTimeout(r, 3000));
+      setStatus('connected', 'Polling aktiv...');
+    }
+  }
+}
+
+// --- Start ---
+function startAudio() {
+  if (started) return;
+  started = true;
+  sBtn.style.display = 'none';
+
+  const ctx = initAudio();
+  if (!ctx) {
+    setStatus('error', 'AudioContext fehlgeschlagen');
+    return;
+  }
+
+  const mode = params.get('mode') || 'sse';
+  if (mode === 'poll') {
+    pollLoop();
+  } else {
+    connectSSE();
+  }
+}
+
+// OBS Browser Source: Autoplay erlaubt -> sofort starten
+// Normaler Browser: AudioContext braucht User-Gesture
+(async () => {
+  const ctx = initAudio();
+  if (ctx && ctx.state === 'running') {
+    // Autoplay erlaubt (OBS / Chrome mit Flag)
+    startAudio();
+  } else if (ctx) {
+    // Warte kurz und check nochmal (OBS kann etwas dauern)
+    await new Promise(r => setTimeout(r, 500));
+    await ctx.resume().catch(() => {});
+    if (ctx.state === 'running') {
+      startAudio();
+    } else {
+      // Normaler Browser: Klick-Button zeigen
+      setStatus('connected', 'Klick um Audio zu starten');
+      sBtn.style.display = 'inline-block';
+      sBtn.onclick = () => {
+        ctx.resume();
+        startAudio();
+      };
+    }
+  }
+})();
+</script>
+</body>
+</html>"""
+
+
+@app.get("/audio-stream/page")
+def audio_stream_page():
+    """
+    Audio Player Seite — spielt TTS-Audio in Echtzeit ab.
+
+    Nutzung:
+      - OBS Browser Source: http://localhost:PORT/audio-stream/page
+      - Browser:            http://localhost:PORT/audio-stream/page
+      - UI ausblenden:      ?hide=1
+      - Polling statt SSE:  ?mode=poll
+    """
+    return Response(_AUDIO_STREAM_PAGE_HTML, mimetype='text/html')
+
+
+@app.get("/audio-stream")
+def audio_stream_redirect():
+    """Redirect zur Audio Player Seite."""
+    from flask import redirect
+    return redirect('/audio-stream/page')
 
 
 if __name__ == "__main__":

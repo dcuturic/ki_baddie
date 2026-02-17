@@ -52,6 +52,18 @@ services:
       - text_to_speech
       - vroid_emotion
 
+  web_avatar:
+    build: ./web_avatar
+    container_name: web_avatar
+    networks:
+      - appnet
+    ports:
+      - "5006:5006"
+    environment:
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ./web_avatar/models:/app/models
+
 networks:
   appnet:
     driver: bridge

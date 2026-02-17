@@ -1,4 +1,8 @@
 {
+  "view_model": "web_avatar",
+  "services": {
+    "web_avatar": "http://127.0.0.1:5006"
+  },
   "animation": {
     "default_speed": 2.9,
     "joy_range": 80,
@@ -76,9 +80,5 @@
     "debug": false,
     "host": "0.0.0.0",
     "port": 5003
-  },
-  "services": {
-    "web_avatar": "http://127.0.0.1:5006"
-  },
-  "view_model": "web_avatar"
+  }
 }

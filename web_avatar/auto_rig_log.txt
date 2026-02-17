@@ -1,0 +1,69 @@
+﻿
+============================================================
+  Auto-Rig: Adding skeleton to static GLB
+  Input:  D:\videos\ki_girl\web_avatar\models\arknights_endfield_-laevatain-.glb
+  Output: D:\videos\ki_girl\web_avatar\models\arknights_rigged.glb
+============================================================
+
+23:23:18 | INFO: Data are loaded, start creating Blender stuff
+23:23:18 | INFO: Blender create Mesh node Object_0
+23:23:18 | INFO: Blender create Mesh node Object_1
+23:23:18 | INFO: Blender create Mesh node Object_2
+23:23:18 | INFO: Blender create Mesh node Object_3
+23:23:18 | INFO: Blender create Mesh node Object_4
+23:23:18 | INFO: Blender create Mesh node Object_5
+23:23:18 | INFO: glTF import finished in 0.07s
+[OK] Imported: D:\videos\ki_girl\web_avatar\models\arknights_endfield_-laevatain-.glb
+[OK] Found 6 mesh objects
+[OK] Transforms applied
+[Mesh] Height: 64452.516, Width: 38593.203, Depth: 43863.208
+[Mesh] Bottom: 1896.891, Top: 66349.406
+[INFO] Model height 64452.5 -> scaling by 0.000025 to 1.6m
+[Mesh] Height: 1.600, Width: 0.958, Depth: 1.089
+[Mesh] Bottom: 0.000, Top: 1.600
+[OK] Model scaled and centered at origin, feet on Z=0
+[Mesh] Height: 1.600, Width: 0.958, Depth: 1.089
+[Mesh] Bottom: 0.000, Top: 1.600
+[OK] Body analysis complete ΓÇö height=1.600
+[OK] Meshes joined: Body, data: Body
+Info: Removed 17371 vertices
+Info: Removed: 0 vertices, 0 edges, 0 faces
+[OK] Mesh cleaned: 45860 verts
+[OK] Armature created with 80 bones
+Warning: Bone Heat Weighting: failed to find solution for one or more bones
+[OK] Automatic Weights applied successfully!
+[VERIFY] 80 vertex groups, has_weights=False
+[WARN] Automatic weights failed ΓÇö using distance-based assignment
+[OK] Distance-based weights assigned to 45860 vertices
+[VERIFY] 80 vertex groups, has_weights=True
+
+[Pre-Export] Scene state:
+  Mesh: Body (data: Body)
+  Parent: Armature
+  Modifiers: [('Armature', 'ARMATURE', 'Armature')]
+  Vertex groups: 80
+  Has vertex weights: True
+  Total vertices: 45860
+  Armature bones: 80
+[Export] Scene objects:
+  Armature (ARMATURE) parent=None mods=[]
+  Body (MESH) parent=Armature mods=['ARMATURE']
+INFO Draco mesh compression is available, use library at C:\Program Files\Blender Foundation\Blender 4.2\4.2\python\lib\site-packages\extern_draco.dll
+23:23:21 | INFO: Starting glTF 2.0 export
+23:23:21 | INFO: Extracting primitive: Body
+23:23:22 | WARNING: More than one shader node tex image used for a texture. The resulting glTF sampler will behave like the first shader node tex image.
+23:23:22 | INFO: Primitives created: 6
+23:23:22 | INFO: Finished glTF 2.0 export in 0.7446787357330322 s
+
+[OK] Exported: D:\videos\ki_girl\web_avatar\models\arknights_rigged.glb
+[VERIFY] Output has 1 skins, 80 joints/bones
+
+============================================================
+  DONE! Rigged model saved to:
+  D:\videos\ki_girl\web_avatar\models\arknights_rigged.glb
+  Bones: 80
+============================================================
+
+Blender 4.2.17 LTS (hash 76b996a81c95 built 2026-01-20 01:34:27)
+
+Blender quit

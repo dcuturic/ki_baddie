@@ -7,6 +7,7 @@ import json
 from dataclasses import dataclass
 from typing import Dict, List, Tuple
 
+import requests as http_requests
 from flask import Flask, request, jsonify
 from osc4py3.as_eventloop import osc_startup, osc_terminate, osc_udp_client, osc_send, osc_process
 from osc4py3 import oscbuildparse
@@ -200,6 +201,11 @@ class RuntimeState:
     idle_motion_enabled: bool = True
     idle_motion_thread_running: bool = False
 
+# View model: "vseeface" (OSC) or "web_avatar" (HTTP)
+VIEW_MODEL = CONFIG.get("view_model", "vseeface").strip().lower()
+WEB_AVATAR_URL = CONFIG.get("services", {}).get("web_avatar", "http://127.0.0.1:5006")
+print(f"[Poser] VIEW_MODEL = {VIEW_MODEL!r}", flush=True)
+
 # Load OSC config from global config
 osc_cfg_data = CONFIG.get("osc", {})
 osc_cfg = OSCConfig(
@@ -303,7 +309,40 @@ def ensure_osc_started():
     osc_startup()
     osc_udp_client(osc_cfg.ip, osc_cfg.port, osc_cfg.client_name)
 
+# --- Web Avatar HTTP bone buffer (batches bone sends into one HTTP call) ---
+_wa_bone_buffer: Dict[str, Dict] = {}
+_wa_bone_lock = threading.Lock()
+_wa_flush_interval = 1.0 / 30.0  # flush at ~30fps
+
+def _wa_flush_loop():
+    """Background thread: flush buffered bones to web_avatar at ~30fps."""
+    while True:
+        time.sleep(_wa_flush_interval)
+        with _wa_bone_lock:
+            if not _wa_bone_buffer:
+                continue
+            data = dict(_wa_bone_buffer)
+        try:
+            http_requests.post(f"{WEB_AVATAR_URL}/api/bones", json=data, timeout=2)
+        except Exception:
+            pass
+
+if VIEW_MODEL == "web_avatar":
+    threading.Thread(target=_wa_flush_loop, daemon=True).start()
+    print(f"[Poser] Web Avatar bone flush thread started -> {WEB_AVATAR_URL}", flush=True)
+
+def _wa_buffer_bone(bone: str, px: float, py: float, pz: float, qx: float, qy: float, qz: float, qw: float):
+    """Buffer a bone transform for batched HTTP send to web_avatar."""
+    with _wa_bone_lock:
+        _wa_bone_buffer[bone] = {
+            "p": [px, py, pz],
+            "q": [qx, qy, qz, qw]
+        }
+
 def sendosc_quat(bone: str, px: float, py: float, pz: float, qx: float, qy: float, qz: float, qw: float):
+    if VIEW_MODEL == "web_avatar":
+        _wa_buffer_bone(bone, px, py, pz, qx, qy, qz, qw)
+        return
     if not osc_cfg.enabled:
         return
     msg = oscbuildparse.OSCMessage(
@@ -315,6 +354,19 @@ def sendosc_quat(bone: str, px: float, py: float, pz: float, qx: float, qy: floa
     osc_process()
 
 def sendosc_triplet(bone: str, x: float, y: float, z: float):
+    if VIEW_MODEL == "web_avatar":
+        # For triplet mode, w=1 means it's euler-ish, buffer as quat
+        if bone == "Hips":
+            _wa_buffer_bone(
+                bone,
+                float(state.destination[0] + state.offset[0]),
+                float(state.destination[1] + state.offset[1]),
+                float(state.destination[2] + state.offset[2]),
+                float(x), float(y), float(z), 1.0
+            )
+        else:
+            _wa_buffer_bone(bone, 0.0, 0.0, 0.0, float(x), float(y), float(z), 1.0)
+        return
     if not osc_cfg.enabled:
         return
     if bone == "Hips":
@@ -338,15 +390,34 @@ def sendosc_triplet(bone: str, x: float, y: float, z: float):
     osc_send(msg, osc_cfg.client_name)
     osc_process()
 
+# --- Web Avatar blend buffer ---
+_wa_blend_buffer: Dict[str, float] = {}
+_wa_blend_lock = threading.Lock()
+
 def send_blendshape(name: str, value: float):
+    v = float(max(0.0, min(1.0, value)))
+    if VIEW_MODEL == "web_avatar":
+        with _wa_blend_lock:
+            _wa_blend_buffer[str(name)] = v
+        return
     if not osc_cfg.enabled:
         return
-    v = float(max(0.0, min(1.0, value)))
     msg = oscbuildparse.OSCMessage("/VMC/Ext/Blend/Val", None, [str(name), v])
     osc_send(msg, osc_cfg.client_name)
     osc_process()
 
 def apply_blendshapes():
+    if VIEW_MODEL == "web_avatar":
+        with _wa_blend_lock:
+            if not _wa_blend_buffer:
+                return
+            data = dict(_wa_blend_buffer)
+            _wa_blend_buffer.clear()
+        try:
+            http_requests.post(f"{WEB_AVATAR_URL}/api/blend", json=data, timeout=2)
+        except Exception:
+            pass
+        return
     if not osc_cfg.enabled:
         return
     msg = oscbuildparse.OSCMessage("/VMC/Ext/Blend/Apply", None, [])
@@ -1170,6 +1241,29 @@ if __name__ == "__main__":
 
     start_auto_blink()
     start_idle_motion()
+
+    # Kamera auf Vorderseite (Preset "front") stellen — verzögert im Thread,
+    # damit der Browser Zeit hat sich zu verbinden
+    if VIEW_MODEL == "web_avatar":
+        def _set_initial_camera():
+            import time as _time
+            _time.sleep(5)  # Warten bis Browser verbunden ist
+            for attempt in range(3):
+                try:
+                    resp = http_requests.post(
+                        f"{WEB_AVATAR_URL}/api/camera/view",
+                        json={"preset": "front"},
+                        timeout=5
+                    )
+                    if resp.status_code == 200:
+                        print(f"[Poser] Kamera auf 'front' gesetzt (Versuch {attempt+1})", flush=True)
+                        return
+                    else:
+                        print(f"[Poser] Kamera-Request Status {resp.status_code} (Versuch {attempt+1})", flush=True)
+                except Exception as e:
+                    print(f"[Poser] Kamera-Preset Versuch {attempt+1} fehlgeschlagen: {e}", flush=True)
+                _time.sleep(3)
+        threading.Thread(target=_set_initial_camera, daemon=True).start()
 
     server_cfg = CONFIG.get("server", {})
     app.run(

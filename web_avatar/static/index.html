@@ -1,0 +1,1583 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<title>Web Avatar — VRM Viewer</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { overflow: hidden; background: transparent !important; background-color: transparent !important; }
+  canvas { display: block; background: transparent !important; }
+
+  #loading {
+    position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+    display: flex; align-items: center; justify-content: center;
+    flex-direction: column; gap: 12px;
+    background: rgba(10, 10, 20, 0.95);
+    font-family: 'Segoe UI', sans-serif; color: #ccc;
+    z-index: 100;
+    transition: opacity 0.5s;
+  }
+  #loading.hidden { opacity: 0; pointer-events: none; }
+  #loading h2 { font-size: 20px; font-weight: 400; color: #fff; }
+  #loading .progress { font-size: 14px; color: #888; }
+  #loading .error { color: #f44; font-size: 14px; max-width: 500px; text-align: center; line-height: 1.6; }
+  #loading .hint { color: #888; font-size: 12px; margin-top: 8px; }
+
+  #hud {
+    position: fixed; bottom: 10px; left: 10px;
+    font-family: 'Segoe UI', monospace; font-size: 11px;
+    color: rgba(255,255,255,0.4);
+    pointer-events: none; z-index: 10;
+  }
+  #hud.hidden { display: none; }
+</style>
+</head>
+<body>
+
+<div id="loading">
+  <h2 id="loadTitle">Avatar wird geladen...</h2>
+  <div class="progress" id="loadProgress"></div>
+</div>
+
+<div id="hud">
+  <span id="hudText">Warte auf Daten...</span>
+</div>
+
+<!-- Socket.IO client -->
+<script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script>
+
+<!-- Import Map for Three.js + three-vrm -->
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/",
+    "@pixiv/three-vrm": "https://cdn.jsdelivr.net/npm/@pixiv/three-vrm@3.1.0/lib/three-vrm.module.min.js"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { VRMLoaderPlugin, VRMUtils } from '@pixiv/three-vrm';
+
+// ==================== URL PARAMS ====================
+const params = new URLSearchParams(window.location.search);
+const bgMode    = params.get('bg') || 'transparent';   // transparent | green | hex
+const camMode   = params.get('cam') || 'bust';          // bust | full | face
+const hideHud   = params.get('hud') === '0';
+const vrmUrl    = params.get('vrm') || '/vrm/model';
+
+// ==================== RENDERER ====================
+const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.0;
+document.body.appendChild(renderer.domElement);
+
+// ==================== SCENE ====================
+const scene = new THREE.Scene();
+
+if (bgMode === 'transparent') {
+  renderer.setClearColor(0x000000, 0);
+} else if (bgMode === 'green') {
+  scene.background = new THREE.Color(0x00ff00);
+} else {
+  try {
+    scene.background = new THREE.Color('#' + bgMode.replace('#', ''));
+  } catch (e) {
+    renderer.setClearColor(0x000000, 0);
+  }
+}
+
+// ==================== CAMERA ====================
+let defaultFov = 28;
+let defaultPos = [0, 1.35, 0.9];
+let defaultTarget = [0, 1.25, 0];
+
+const camera = new THREE.PerspectiveCamera(
+  defaultFov, window.innerWidth / window.innerHeight, 0.05, 100
+);
+
+const camPresets = {
+  bust:  { pos: [0, 1.35, 0.9],  target: [0, 1.25, 0] },
+  full:  { pos: [0, 0.9, 2.8],   target: [0, 0.85, 0] },
+  face:  { pos: [0, 1.47, 0.42], target: [0, 1.44, 0] },
+  upper: { pos: [0, 1.2, 1.5],   target: [0, 1.1, 0]  },
+};
+
+camera.position.set(...defaultPos);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.set(...defaultTarget);
+controls.enableDamping = true;
+controls.dampingFactor = 0.08;
+controls.minDistance = 0.2;
+controls.maxDistance = 10;
+controls.update();
+
+// Load camera config from server and apply
+(async () => {
+  try {
+    const resp = await fetch('/vrm/config');
+    if (resp.ok) {
+      const cfg = await resp.json();
+      if (cfg.camera) {
+        if (cfg.camera.fov) {
+          defaultFov = cfg.camera.fov;
+          camera.fov = defaultFov;
+          camera.updateProjectionMatrix();
+        }
+        if (cfg.camera.position) {
+          defaultPos = cfg.camera.position;
+          _configLoaded = true;
+        }
+        if (cfg.camera.target) {
+          defaultTarget = cfg.camera.target;
+        }
+        // Apply — URL cam preset overrides server config
+        if (camMode === 'bust' || !camPresets[camMode]) {
+          camera.position.set(...defaultPos);
+          controls.target.set(...defaultTarget);
+        } else {
+          const p = camPresets[camMode];
+          camera.position.set(...p.pos);
+          controls.target.set(...p.target);
+        }
+        controls.update();
+        console.log('[Camera] Config geladen:', cfg.camera);
+      }
+    }
+  } catch (e) {
+    console.warn('[Camera] Config konnte nicht geladen werden:', e);
+  }
+})();
+
+/**
+ * Auto-frame: Kamera so positionieren, dass die gesamte Figur von vorne
+ * sichtbar ist, mit etwas Padding oben und unten.
+ * VRM-Modelle schauen in -Z Richtung, daher Kamera bei +Z = Vorderseite.
+ * Falls das Modell gedreht ist, wird die tatsächliche Blickrichtung ermittelt.
+ */
+function autoFrameModel(vrmScene, side = 'front') {
+  const box = new THREE.Box3().setFromObject(vrmScene);
+  const size = new THREE.Vector3();
+  const center = new THREE.Vector3();
+  box.getSize(size);
+  box.getCenter(center);
+
+  const height = size.y;
+  const padding = 1.15;  // 15% Padding oben+unten
+
+  // Blickrichtung des VRM-Modells ermitteln
+  // VRM-Standard: Modell schaut in +Z (three-vrm Konvention)
+  const forward = new THREE.Vector3(0, 0, 1);
+  forward.applyQuaternion(vrmScene.quaternion);
+
+  const fovRad = THREE.MathUtils.degToRad(camera.fov);
+  const aspect = camera.aspect;
+
+  // Entfernung: sowohl Höhe als auch Breite prüfen
+  let distance = (height * padding / 2) / Math.tan(fovRad / 2);
+  const widthDist = (size.x * padding / 2) / (Math.tan(fovRad / 2) * aspect);
+  if (widthDist > distance) distance = widthDist;
+
+  let camPos, camTarget;
+  camTarget = [center.x, center.y, center.z];
+
+  if (side === 'back') {
+    camPos = [center.x + forward.x * distance, center.y, center.z + forward.z * distance];
+  } else {
+    camPos = [center.x - forward.x * distance, center.y, center.z - forward.z * distance];
+  }
+
+  camera.position.set(...camPos);
+  controls.target.set(...camTarget);
+  controls.update();
+
+  defaultPos = camPos;
+  defaultTarget = camTarget;
+
+  console.log(`[Camera] Auto-Frame (${side}): h=${height.toFixed(2)}, dist=${distance.toFixed(2)}, forward=[${forward.x.toFixed(2)}, ${forward.z.toFixed(2)}]`);
+  return { center, size, distance, forward };
+}
+
+/**
+ * Dynamische Presets basierend auf der tatsächlichen Modell-Größe.
+ */
+function getModelPresets() {
+  if (!vrm) return camPresets;
+  const box = new THREE.Box3().setFromObject(vrm.scene);
+  const size = new THREE.Vector3();
+  const center = new THREE.Vector3();
+  box.getSize(size);
+  box.getCenter(center);
+
+  // VRM-Standard: Modell schaut in +Z (three-vrm Konvention)
+  const forward = new THREE.Vector3(0, 0, 1);
+  forward.applyQuaternion(vrm.scene.quaternion);
+
+  const h = size.y;
+  const fovRad = THREE.MathUtils.degToRad(camera.fov);
+  const fullDist = (h * 1.15 / 2) / Math.tan(fovRad / 2);
+  const bustDist = fullDist * 0.4;
+  const faceDist = fullDist * 0.2;
+
+  // Gesicht-Höhe: ca. 90% der Gesamthöhe
+  const faceY = box.min.y + h * 0.9;
+  // Brust-Höhe: ca. 75% der Gesamthöhe
+  const bustY = box.min.y + h * 0.75;
+  // Hüfte/Po: ca. 50%
+  const hipY = box.min.y + h * 0.50;
+  // Oberschenkel: ca. 38%
+  const thighY = box.min.y + h * 0.38;
+  // Beine komplett: ca. 25%
+  const legY = box.min.y + h * 0.25;
+  // Füße: ca. 5%
+  const feetY = box.min.y + h * 0.05;
+
+  // Seitenvektor (rechts vom Modell)
+  const right = new THREE.Vector3(1, 0, 0);
+  right.applyQuaternion(vrm.scene.quaternion);
+
+  // Nahaufnahme-Distanzen
+  const closeDist = fullDist * 0.18;   // sehr nah
+  const medDist   = fullDist * 0.30;   // mittel nah
+  const hipDist   = fullDist * 0.35;
+  const legDist   = fullDist * 0.45;
+  const sideDist  = fullDist * 0.6;
+
+  return {
+    // === VORDERSEITE ===
+    front:        { pos: [center.x - forward.x * fullDist, center.y, center.z - forward.z * fullDist],
+                    target: [center.x, center.y, center.z] },
+    front_bust:   { pos: [center.x - forward.x * bustDist, bustY, center.z - forward.z * bustDist],
+                    target: [center.x, bustY, center.z] },
+    face:         { pos: [center.x - forward.x * faceDist, faceY, center.z - forward.z * faceDist],
+                    target: [center.x, faceY, center.z] },
+    face_close:   { pos: [center.x - forward.x * closeDist, faceY, center.z - forward.z * closeDist],
+                    target: [center.x, faceY, center.z] },
+    front_hip:    { pos: [center.x - forward.x * hipDist, hipY, center.z - forward.z * hipDist],
+                    target: [center.x, hipY, center.z] },
+    front_thigh:  { pos: [center.x - forward.x * medDist, thighY, center.z - forward.z * medDist],
+                    target: [center.x, thighY, center.z] },
+    front_legs:   { pos: [center.x - forward.x * legDist, legY, center.z - forward.z * legDist],
+                    target: [center.x, legY, center.z] },
+    front_feet:   { pos: [center.x - forward.x * medDist, feetY, center.z - forward.z * medDist],
+                    target: [center.x, feetY, center.z] },
+
+    // === RÜCKSEITE ===
+    back:         { pos: [center.x + forward.x * fullDist, center.y, center.z + forward.z * fullDist],
+                    target: [center.x, center.y, center.z] },
+    back_bust:    { pos: [center.x + forward.x * bustDist, bustY, center.z + forward.z * bustDist],
+                    target: [center.x, bustY, center.z] },
+    back_butt:    { pos: [center.x + forward.x * hipDist, hipY, center.z + forward.z * hipDist],
+                    target: [center.x, hipY, center.z] },
+    back_butt_close: { pos: [center.x + forward.x * closeDist, hipY, center.z + forward.z * closeDist],
+                    target: [center.x, hipY, center.z] },
+    back_thigh:   { pos: [center.x + forward.x * medDist, thighY, center.z + forward.z * medDist],
+                    target: [center.x, thighY, center.z] },
+    back_legs:    { pos: [center.x + forward.x * legDist, legY, center.z + forward.z * legDist],
+                    target: [center.x, legY, center.z] },
+
+    // === SEITE (rechts) ===
+    side_right:   { pos: [center.x + right.x * sideDist, center.y, center.z + right.z * sideDist],
+                    target: [center.x, center.y, center.z] },
+    side_right_close: { pos: [center.x + right.x * medDist, bustY, center.z + right.z * medDist],
+                    target: [center.x, bustY, center.z] },
+
+    // === SEITE (links) ===
+    side_left:    { pos: [center.x - right.x * sideDist, center.y, center.z - right.z * sideDist],
+                    target: [center.x, center.y, center.z] },
+    side_left_close: { pos: [center.x - right.x * medDist, bustY, center.z - right.z * medDist],
+                    target: [center.x, bustY, center.z] },
+
+    // === OBEN / UNTEN ===
+    top:          { pos: [center.x, box.max.y + fullDist * 0.5, center.z],
+                    target: [center.x, center.y, center.z] },
+    bottom:       { pos: [center.x + forward.x * medDist, feetY, center.z + forward.z * medDist],
+                    target: [center.x, feetY, center.z] },
+  };
+}
+
+async function saveCameraPosition() {
+  const pos = [camera.position.x, camera.position.y, camera.position.z];
+  const target = [controls.target.x, controls.target.y, controls.target.z];
+  const fov = camera.fov;
+  try {
+    const resp = await fetch('/api/camera/save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ position: pos, target: target, fov: fov })
+    });
+    const result = await resp.json();
+    if (result.success) {
+      defaultPos = result.camera.position;
+      defaultTarget = result.camera.target;
+      defaultFov = result.camera.fov || fov;
+      console.log('[Camera] Position gespeichert:', result.camera);
+      // Brief visual feedback
+      const old = document.body.style.outline;
+      document.body.style.outline = '3px solid #2ecc71';
+      setTimeout(() => { document.body.style.outline = old; }, 400);
+    } else {
+      console.error('[Camera] Speichern fehlgeschlagen:', result.error);
+    }
+  } catch (e) {
+    console.error('[Camera] Speichern Fehler:', e);
+  }
+}
+
+// ==================== LIGHTING ====================
+const ambientLight = new THREE.AmbientLight(0xffffff, 0.65);
+scene.add(ambientLight);
+
+const keyLight = new THREE.DirectionalLight(0xfff5ee, 0.85);
+keyLight.position.set(1.5, 2.5, 2);
+scene.add(keyLight);
+
+const fillLight = new THREE.DirectionalLight(0xc8d8ff, 0.35);
+fillLight.position.set(-1.5, 1, 1);
+scene.add(fillLight);
+
+const rimLight = new THREE.DirectionalLight(0xffffff, 0.3);
+rimLight.position.set(0, 1, -2);
+scene.add(rimLight);
+
+// ==================== HUD ====================
+const hudEl = document.getElementById('hud');
+const hudText = document.getElementById('hudText');
+if (hideHud) hudEl.classList.add('hidden');
+
+let boneUpdates = 0;
+let blendUpdates = 0;
+
+function updateHud() {
+  hudText.textContent = `Bones: ${boneUpdates} | Blends: ${blendUpdates}`;
+}
+
+// ==================== VRM LOADING ====================
+let vrm = null;
+let glbScene = null;     // For GLB-only models (no VRM data)
+let glbSkeleton = null;  // SkeletonHelper's skeleton for GLB bone mapping
+let glbBoneMap = {};     // { boneName -> THREE.Bone } for direct GLB control
+let glbMorphMap = {};    // { morphName -> [{mesh, index}] } for GLB blend shapes
+let modelFormat = 'vrm'; // 'vrm' or 'glb'
+let _configLoaded = false;  // true wenn Custom-Config vom Server kam
+let _pendingCameraState = null;  // Camera-State der vor VRM-Load ankam
+const loadingEl = document.getElementById('loading');
+const loadTitle = document.getElementById('loadTitle');
+const loadProgress = document.getElementById('loadProgress');
+
+// Detect model format from server config
+(async () => {
+  try {
+    const resp = await fetch('/vrm/config');
+    if (resp.ok) {
+      const cfg = await resp.json();
+      if (cfg.model_format) modelFormat = cfg.model_format;
+      console.log('[Model] Format:', modelFormat);
+    }
+  } catch(e) {}
+})();
+
+const gltfLoader = new GLTFLoader();
+gltfLoader.register((parser) => new VRMLoaderPlugin(parser));
+
+/**
+ * Build a bone name map from a GLTF scene's skeleton(s).
+ * Maps common VRM/VMC bone names to actual Three.js Bone objects.
+ */
+function buildBoneMap(scene) {
+  const map = {};
+  scene.traverse((obj) => {
+    if (obj.isBone) {
+      // Store rest pose BEFORE any animation modifies it
+      if (!obj.userData.restQuaternion) {
+        obj.userData.restQuaternion = obj.quaternion.clone();
+      }
+      if (!obj.userData.restPosition) {
+        obj.userData.restPosition = obj.position.clone();
+      }
+      // Store by exact name
+      map[obj.name] = obj;
+      // Also store lowercase version
+      map[obj.name.toLowerCase()] = obj;
+      // Common VMC PascalCase -> try mapping
+      const camel = obj.name.charAt(0).toLowerCase() + obj.name.slice(1);
+      map[camel] = obj;
+    }
+  });
+  return map;
+}
+
+/**
+ * Normalize a GLB bone name for matching.
+ * e.g. JNT_R_UpperArm_026 -> r_upperarm
+ */
+function normalizeBoneName(name) {
+  return name.toLowerCase()
+    .replace(/^jnt_/i, '')        // strip JNT_ prefix
+    .replace(/_0*\d+$/g, '')      // strip trailing _026, _04, _0123 etc.
+    .replace(/\s+/g, '_');
+}
+
+/**
+ * Build a smart mapping from VMC/VRM standard bone names to actual GLB bone names.
+ * Handles patterns like JNT_C_Head_050, JNT_R_UpperArm_026, etc.
+ * Skips roll/twist/end helper bones.
+ */
+function buildSmartBoneMap(rawBoneMap) {
+  const smartMap = {};
+
+  // VMC standard name -> keywords to search for in GLB bone names
+  const VMC_TO_KEYWORDS = {
+    // Core body (ordered: most specific first)
+    'hips':           ['c_cog', 'cog', 'c_pelvis', 'pelvis', 'hip'],
+    'spine':          ['c_spine_01', 'spine_01', 'spine1'],
+    'chest':          ['c_spine_02', 'spine_02', 'spine2', 'chest'],
+    'upperChest':     ['c_spine_03', 'spine_03', 'spine3', 'upperchest'],
+    'neck':           ['c_neck', 'neck'],
+    'head':           ['c_head', 'head'],
+    // Legs
+    'leftUpperLeg':   ['l_upperleg', 'l_thigh'],
+    'rightUpperLeg':  ['r_upperleg', 'r_thigh'],
+    'leftLowerLeg':   ['l_calf', 'l_lowerleg', 'l_shin'],
+    'rightLowerLeg':  ['r_calf', 'r_lowerleg', 'r_shin'],
+    'leftFoot':       ['l_foot'],
+    'rightFoot':      ['r_foot'],
+    'leftToes':       ['l_toe'],
+    'rightToes':      ['r_toe'],
+    // Arms
+    'leftShoulder':   ['l_clavicle'],
+    'rightShoulder':  ['r_clavicle'],
+    'leftUpperArm':   ['l_upperarm'],
+    'rightUpperArm':  ['r_upperarm'],
+    'leftLowerArm':   ['l_forearm', 'l_lowerarm'],
+    'rightLowerArm':  ['r_forearm', 'r_lowerarm'],
+    'leftHand':       ['l_hand'],
+    'rightHand':      ['r_hand'],
+    // Eyes
+    'leftEye':        ['l_eye'],
+    'rightEye':       ['r_eye'],
+    // Jaw
+    'jaw':            ['c_jaw', 'jaw'],
+    // Fingers - Left
+    'leftThumbProximal':       ['l_thumb_1'],
+    'leftThumbIntermediate':   ['l_thumb_2'],
+    'leftThumbDistal':         ['l_thumb_3'],
+    'leftIndexProximal':       ['l_index_1'],
+    'leftIndexIntermediate':   ['l_index_2'],
+    'leftIndexDistal':         ['l_index_3'],
+    'leftMiddleProximal':      ['l_middle_1'],
+    'leftMiddleIntermediate':  ['l_middle_2'],
+    'leftMiddleDistal':        ['l_middle_3'],
+    'leftRingProximal':        ['l_pointer_1', 'l_ring_1'],
+    'leftRingIntermediate':    ['l_pointer_2', 'l_ring_2'],
+    'leftRingDistal':          ['l_pointer_3', 'l_ring_3'],
+    'leftLittleProximal':      ['l_pinky_1'],
+    'leftLittleIntermediate':  ['l_pinky_2'],
+    'leftLittleDistal':        ['l_pinky_3'],
+    // Fingers - Right
+    'rightThumbProximal':      ['r_thumb_1'],
+    'rightThumbIntermediate':  ['r_thumb_2'],
+    'rightThumbDistal':        ['r_thumb_3'],
+    'rightIndexProximal':      ['r_index_1'],
+    'rightIndexIntermediate':  ['r_index_2'],
+    'rightIndexDistal':        ['r_index_3'],
+    'rightMiddleProximal':     ['r_middle_1'],
+    'rightMiddleIntermediate': ['r_middle_2'],
+    'rightMiddleDistal':       ['r_middle_3'],
+    'rightRingProximal':       ['r_pointer_1', 'r_ring_1'],
+    'rightRingIntermediate':   ['r_pointer_2', 'r_ring_2'],
+    'rightRingDistal':         ['r_pointer_3', 'r_ring_3'],
+    'rightLittleProximal':     ['r_pinky_1'],
+    'rightLittleIntermediate': ['r_pinky_2'],
+    'rightLittleDistal':       ['r_pinky_3'],
+  };
+
+  // Bones to SKIP: roll, twist, end, mid_roll helper bones
+  const SKIP_PATTERNS = ['_roll', 'roll_', 'twist', 'mid_roll', 'adjust', '_end_'];
+
+  // Get all actual bone names (unique, skip lowercase/camelCase duplicates)
+  const allBones = {};
+  for (const [key, bone] of Object.entries(rawBoneMap)) {
+    if (key === bone.name) allBones[key] = bone;
+  }
+
+  // For each VMC standard name, find the best matching bone
+  // Strategy: exact match first, then includes-match, always skip helper bones
+  for (const [vmcName, keywords] of Object.entries(VMC_TO_KEYWORDS)) {
+    let matched = false;
+
+    for (const keyword of keywords) {
+      if (matched) break;
+      const kwLower = keyword.toLowerCase();
+
+      // Pass 1: exact match only (normalized === keyword)
+      for (const [boneName, bone] of Object.entries(allBones)) {
+        const normalized = normalizeBoneName(boneName);
+        // Skip roll/twist/end helper bones
+        if (SKIP_PATTERNS.some(p => normalized.includes(p))) continue;
+
+        if (normalized === kwLower) {
+          smartMap[vmcName] = bone;
+          const pascal = vmcName.charAt(0).toUpperCase() + vmcName.slice(1);
+          smartMap[pascal] = bone;
+          matched = true;
+          break;
+        }
+      }
+
+      if (matched) break;
+
+      // Pass 2: includes match (for bones with extra prefixes like c_, etc.)
+      for (const [boneName, bone] of Object.entries(allBones)) {
+        const normalized = normalizeBoneName(boneName);
+        if (SKIP_PATTERNS.some(p => normalized.includes(p))) continue;
+
+        if (normalized.includes(kwLower) && !matched) {
+          smartMap[vmcName] = bone;
+          const pascal = vmcName.charAt(0).toUpperCase() + vmcName.slice(1);
+          smartMap[pascal] = bone;
+          matched = true;
+          break;
+        }
+      }
+    }
+  }
+
+  // Log detailed mapping
+  const mappedEntries = Object.entries(smartMap)
+    .filter(([k]) => k === k.charAt(0).toLowerCase() + k.slice(1));
+  console.log('[GLB] Smart bone mapping:', mappedEntries.length, 'VMC bones matched');
+  for (const [vmcName, bone] of mappedEntries) {
+    console.log(`  ${vmcName} -> ${bone.name}`);
+  }
+  return smartMap;
+}
+
+// GLB facial bones for bone-driven expressions (no morph targets needed)
+let glbFacialBones = {};  // { jaw, leftEyelidUpper, leftEyelidLower, ... }
+
+function buildFacialBoneMap(rawBoneMap) {
+  const facial = {};
+  const FACIAL_KEYWORDS = {
+    'jaw':                ['c_jaw', 'jaw'],
+    'leftEyelidUpper':    ['l_eyelid_upper'],
+    'leftEyelidLower':    ['l_eyelid_lower'],
+    'rightEyelidUpper':   ['r_eyelid_upper'],
+    'rightEyelidLower':   ['r_eyelid_lower'],
+    'leftEye':            ['l_eye'],
+    'rightEye':           ['r_eye'],
+    'leftEyebrowInner':   ['l_eyebrow_inner'],
+    'leftEyebrowMid':     ['l_eyebrow_mid'],
+    'leftEyebrowOuter':   ['l_eyebrow_outer'],
+    'rightEyebrowInner':  ['r_eyebrow_inner'],
+    'rightEyebrowMid':    ['r_eyebrow_mid'],
+    'rightEyebrowOuter':  ['r_eyebrow_outer'],
+    'lipsUpper':          ['lipsupper', 'lips_upper'],
+    'lipsLower':          ['lips_lower'],
+    'lipsLeftCorner':     ['lips_l_corner'],
+    'lipsRightCorner':    ['lips_r_corner'],
+    'lipsLeftUpInner':    ['lips_l_upinner'],
+    'lipsLeftLowInner':   ['lips_l_lowinner'],
+    'lipsLeftUpOuter':    ['lips_l_upouter'],
+    'lipsLeftLowOuter':   ['lips_l_lowouter'],
+    'lipsRightUpInner':   ['lips_r_upinner'],
+    'lipsRightLowInner':  ['lips_r_lowinner'],
+    'lipsRightUpOuter':   ['lips_r_upouter'],
+    'lipsRightLowOuter':  ['lips_r_lowouter'],
+    'tongue01':           ['tongue_01', 'tongue1'],
+    'tongue02':           ['tongue_02', 'tongue2'],
+  };
+
+  // Get unique bones
+  const allBones = {};
+  for (const [key, bone] of Object.entries(rawBoneMap)) {
+    if (key === bone.name) allBones[key] = bone;
+  }
+
+  // Skip end/joint bones
+  const SKIP = ['_end', 'teeth'];
+
+  for (const [facialName, keywords] of Object.entries(FACIAL_KEYWORDS)) {
+    for (const kw of keywords) {
+      if (facial[facialName]) break;
+      const kwLower = kw.toLowerCase();
+      // Pass 1: exact match
+      for (const [boneName, bone] of Object.entries(allBones)) {
+        const norm = normalizeBoneName(boneName);
+        if (SKIP.some(s => norm.includes(s))) continue;
+        if (norm === kwLower) {
+          facial[facialName] = bone;
+          break;
+        }
+      }
+      if (facial[facialName]) break;
+      // Pass 2: includes match
+      for (const [boneName, bone] of Object.entries(allBones)) {
+        const norm = normalizeBoneName(boneName);
+        if (SKIP.some(s => norm.includes(s))) continue;
+        if (norm.includes(kwLower)) {
+          facial[facialName] = bone;
+          break;
+        }
+      }
+    }
+  }
+
+  const foundKeys = Object.keys(facial);
+  console.log('[GLB] Facial bones found:', foundKeys.length, foundKeys.join(', '));
+  for (const [k, bone] of Object.entries(facial)) {
+    console.log(`  facial: ${k} -> ${bone.name}`);
+  }
+  return facial;
+}
+
+/**
+ * Auto-frame any 3D model scene.
+ */
+function autoFrameAnyModel(targetScene) {
+  const box = new THREE.Box3().setFromObject(targetScene);
+  const size = new THREE.Vector3();
+  const center = new THREE.Vector3();
+  box.getSize(size);
+  box.getCenter(center);
+
+  const height = size.y || 1;
+  const padding = 1.15;
+  const fovRad = THREE.MathUtils.degToRad(camera.fov);
+  const aspect = camera.aspect;
+
+  let distance = (height * padding / 2) / Math.tan(fovRad / 2);
+  const widthDist = (size.x * padding / 2) / (Math.tan(fovRad / 2) * aspect);
+  if (widthDist > distance) distance = widthDist;
+
+  // Camera in front (+Z for VRM convention, or best guess)
+  const camPos = [center.x, center.y, center.z + distance];
+  const camTarget = [center.x, center.y, center.z];
+
+  camera.position.set(...camPos);
+  controls.target.set(...camTarget);
+
+  // Adjust near/far for model scale
+  camera.near = Math.max(0.001, height * 0.01);
+  camera.far = Math.max(100, height * 50);
+  controls.minDistance = height * 0.03;
+  controls.maxDistance = height * 15;
+  camera.updateProjectionMatrix();
+  controls.update();
+
+  defaultPos = camPos;
+  defaultTarget = camTarget;
+
+  console.log(`[Camera] Auto-Frame: h=${height.toFixed(3)}, dist=${distance.toFixed(3)}, center=[${center.x.toFixed(2)},${center.y.toFixed(2)},${center.z.toFixed(2)}]`);
+  return { center, size, distance };
+}
+
+gltfLoader.load(
+  vrmUrl,
+  (gltf) => {
+    // === VRM Model ===
+    if (gltf.userData.vrm) {
+      vrm = gltf.userData.vrm;
+      modelFormat = 'vrm';
+
+      VRMUtils.removeUnnecessaryVertices(gltf.scene);
+      VRMUtils.removeUnnecessaryJoints(gltf.scene);
+      scene.add(vrm.scene);
+
+      // Auto-Frame
+      if (!_configLoaded && (camMode === 'bust' || !camPresets[camMode])) {
+        autoFrameModel(vrm.scene);
+      }
+
+      // Debug info
+      if (vrm.expressionManager) {
+        const names = vrm.expressionManager.expressions.map(e => e.expressionName);
+        console.log('[VRM] Expressions:', names);
+      }
+      if (vrm.humanoid) {
+        console.log('[VRM] Bones:', Object.keys(vrm.humanoid.humanBones));
+      }
+      console.log('[VRM] Model geladen!');
+
+    // === GLB Model (kein VRM) ===
+    } else {
+      modelFormat = 'glb';
+      glbScene = gltf.scene;
+      scene.add(glbScene);
+
+      // Build bone map from skeleton (raw names)
+      const rawBoneMap = buildBoneMap(glbScene);
+      const rawBoneNames = Object.keys(rawBoneMap).filter(n => n === rawBoneMap[n].name);
+      console.log('[GLB] Raw bones gefunden:', rawBoneNames.length, rawBoneNames.slice(0, 15));
+
+      // Build smart VMC -> GLB bone mapping
+      const smartMap = buildSmartBoneMap(rawBoneMap);
+      // Merge: smart map takes priority, then raw fallback
+      glbBoneMap = Object.assign({}, rawBoneMap, smartMap);
+
+      // Build facial bone map for bone-driven expressions
+      glbFacialBones = buildFacialBoneMap(rawBoneMap);
+
+      // Build morph target map for expressions/blend shapes
+      glbMorphMap = {};
+      glbScene.traverse((child) => {
+        if (child.isMesh && child.morphTargetDictionary) {
+          for (const [morphName, morphIdx] of Object.entries(child.morphTargetDictionary)) {
+            if (!glbMorphMap[morphName]) glbMorphMap[morphName] = [];
+            glbMorphMap[morphName].push({ mesh: child, index: morphIdx });
+          }
+        }
+      });
+      const morphNames = Object.keys(glbMorphMap);
+      console.log('[GLB] MorphTargets gefunden:', morphNames.length, morphNames.slice(0, 30));
+
+      // Determine expression mode
+      const hasMorphs = morphNames.length > 0;
+      const hasFacialBones = Object.keys(glbFacialBones).length > 0;
+      console.log(`[GLB] Expression mode: ${hasMorphs ? 'MorphTargets' : (hasFacialBones ? 'Bone-driven' : 'NONE')}`);
+
+      // Setup animation mixer for GLB animations
+      if (gltf.animations && gltf.animations.length > 0) {
+        const mixer = new THREE.AnimationMixer(glbScene);
+        glbScene.userData.mixer = mixer;
+        // Play first animation by default
+        const clip = gltf.animations[0];
+        mixer.clipAction(clip).play();
+        console.log(`[GLB] Animation gestartet: ${clip.name} (${gltf.animations.length} total)`);
+      }
+
+      // Auto-Frame GLB model
+      autoFrameAnyModel(glbScene);
+
+      // DEBUG: Log model orientation info
+      const debugBox = new THREE.Box3().setFromObject(glbScene);
+      const debugSize = new THREE.Vector3();
+      const debugCenter = new THREE.Vector3();
+      debugBox.getSize(debugSize);
+      debugBox.getCenter(debugCenter);
+      console.log(`[DEBUG] Model loaded - Size: X=${debugSize.x.toFixed(3)}, Y=${debugSize.y.toFixed(3)}, Z=${debugSize.z.toFixed(3)}`);
+      console.log(`[DEBUG] Model center: (${debugCenter.x.toFixed(3)}, ${debugCenter.y.toFixed(3)}, ${debugCenter.z.toFixed(3)})`);
+      console.log(`[DEBUG] Model Y range: ${debugBox.min.y.toFixed(3)} to ${debugBox.max.y.toFixed(3)} (should be ~0 to ~1.6)`);
+
+      // Log all mapped bones with their rest quaternions
+      const mappedBones = Object.entries(glbBoneMap).filter(([k, v]) => k === v.name);
+      console.log(`[DEBUG] Total unique bones: ${mappedBones.length}`);
+      for (const [name, bone] of mappedBones.slice(0, 10)) {
+        const rq = bone.userData.restQuaternion;
+        console.log(`[DEBUG] Bone ${name}: restQ=(${rq?.x.toFixed(3)}, ${rq?.y.toFixed(3)}, ${rq?.z.toFixed(3)}, ${rq?.w.toFixed(3)})`);
+      }
+
+      console.log('[GLB] Model geladen!');
+    }
+
+    // Hide loading
+    loadingEl.classList.add('hidden');
+    setTimeout(() => { loadingEl.style.display = 'none'; }, 600);
+
+    // Pending Camera-State anwenden (kam vor Model-Load)
+    if (_pendingCameraState) {
+      const pending = _pendingCameraState;
+      _pendingCameraState = null;
+      if (pending.type === 'preset' && vrm) {
+        const presets = getModelPresets();
+        const p = presets[pending.preset];
+        if (p) {
+          camera.position.set(...p.pos);
+          controls.target.set(...p.target);
+          controls.update();
+          console.log('[Camera] Pending Preset angewendet:', pending.preset);
+        }
+      } else if (pending.type === 'position') {
+        if (pending.position) camera.position.set(...pending.position);
+        if (pending.target) controls.target.set(...pending.target);
+        if (pending.fov) { camera.fov = pending.fov; camera.updateProjectionMatrix(); }
+        controls.update();
+        console.log('[Camera] Pending Position angewendet');
+      }
+    }
+  },
+  (progress) => {
+    if (progress.total > 0) {
+      const pct = Math.round((progress.loaded / progress.total) * 100);
+      loadProgress.textContent = `${pct}%`;
+    }
+  },
+  (error) => {
+    console.error('[VRM] Lade-Fehler:', error);
+    loadTitle.textContent = 'Model nicht gefunden';
+    loadProgress.innerHTML = `
+      <span class="error">
+        Bitte lege deine .vrm oder .glb Datei in<br>
+        <strong>web_avatar/models/</strong><br>
+        ab und lade die Seite neu.
+      </span>
+      <span class="hint">
+        (Oder nutze ?vrm=URL als Parameter)
+      </span>
+    `;
+  }
+);
+
+
+// ==================== BONE NAME MAPPING ====================
+// VSeeFace/VMC: PascalCase → three-vrm: camelCase
+function vmcBoneToVrm(name) {
+  return name.charAt(0).toLowerCase() + name.slice(1);
+}
+
+
+// ==================== EXPRESSION MAPPING ====================
+// VRM 0.x (VSeeFace) → VRM 1.0 (three-vrm v3)
+const EXPR_MAP = {
+  // VRM 0.x preset → VRM 1.0 preset
+  'Joy':       'happy',
+  'Angry':     'angry',
+  'Sorrow':    'sad',
+  'Fun':       'relaxed',
+  'Surprised': 'surprised',
+  'Surprise':  'surprised',
+  'Neutral':   'neutral',
+  // Visemes
+  'A': 'aa',  'I': 'ih',  'U': 'ou',  'E': 'ee',  'O': 'oh',
+  // Blink
+  'Blink':   'blink',
+  'Blink_L': 'blinkLeft',
+  'Blink_R': 'blinkRight',
+  // Lowercase variants
+  'joy':       'happy',
+  'angry':     'angry',
+  'sorrow':    'sad',
+  'fun':       'relaxed',
+  'surprised': 'surprised',
+  'surprise':  'surprised',
+  'neutral':   'neutral',
+  'a': 'aa', 'i': 'ih', 'u': 'ou', 'e': 'ee', 'o': 'oh',
+  'blink': 'blink',
+};
+
+function setExpression(name, value) {
+  // VRM path: use expressionManager
+  if (vrm && vrm.expressionManager) {
+    const candidates = [
+      EXPR_MAP[name],
+      name,
+      name.toLowerCase(),
+      EXPR_MAP[name.toLowerCase()],
+    ].filter(Boolean);
+
+    for (const n of candidates) {
+      try {
+        vrm.expressionManager.setValue(n, value);
+        return;
+      } catch (e) { /* try next */ }
+    }
+    return;
+  }
+
+  // GLB path: try morphTargetInfluences first
+  if (glbScene && glbMorphMap && Object.keys(glbMorphMap).length > 0) {
+    const candidates = [
+      EXPR_MAP[name],
+      name,
+      name.toLowerCase(),
+      EXPR_MAP[name.toLowerCase()],
+    ].filter(Boolean);
+
+    for (const n of candidates) {
+      const targets = glbMorphMap[n];
+      if (targets) {
+        for (const t of targets) {
+          t.mesh.morphTargetInfluences[t.index] = value;
+        }
+        return;
+      }
+    }
+    const nameLower = (EXPR_MAP[name] || name).toLowerCase();
+    for (const [morphName, targets] of Object.entries(glbMorphMap)) {
+      if (morphName.toLowerCase() === nameLower) {
+        for (const t of targets) {
+          t.mesh.morphTargetInfluences[t.index] = value;
+        }
+        return;
+      }
+    }
+  }
+
+  // GLB bone-driven expressions (fallback for models without morph targets)
+  if (glbScene && glbFacialBones && Object.keys(glbFacialBones).length > 0) {
+    setBoneExpression(name, value);
+  }
+}
+
+/**
+ * Apply combined viseme values to facial bones in ONE pass.
+ * This prevents later visemes from overwriting earlier ones
+ * (e.g., I=0 resetting jaw that A=0.5 just opened).
+ *
+ * visemes: { aa: 0.5, oh: 0.175, ee: 0.1, ih: 0, ou: 0 }
+ */
+function applyBoneVisemes(visemes) {
+  const fb = glbFacialBones;
+  if (!fb) return;
+
+  const aa = visemes.aa || 0;
+  const oh = visemes.oh || 0;
+  const ee = visemes.ee || 0;
+  const ih = visemes.ih || 0;
+  const ou = visemes.ou || 0;
+
+  // Combined mouth openness (max contribution)
+  const openness = Math.max(aa, oh * 0.8, ou * 0.65, ih * 0.45, ee * 0.35);
+  // Wide vs narrow shape
+  const wide = Math.max(ee * 1.0, ih * 0.8);
+  const narrow = Math.max(ou * 1.0, oh * 0.5);
+
+  const _q = new THREE.Quaternion();
+  const _e = new THREE.Euler();
+
+  function rotateBoneTo(bone, rx, ry, rz) {
+    if (!bone) return;
+    if (!bone.userData.restQuaternion) bone.userData.restQuaternion = bone.quaternion.clone();
+    _e.set(rx, ry, rz);
+    _q.setFromEuler(_e);
+    bone.quaternion.copy(bone.userData.restQuaternion).multiply(_q);
+  }
+
+  // --- Lips move, NOT jaw ---
+  // Lower lip: moves down (positive X rotation) to open mouth
+  rotateBoneTo(fb.lipsLower, openness * 0.25, 0, 0);
+  // Upper lip: moves up slightly (negative X rotation)
+  rotateBoneTo(fb.lipsUpper, -openness * 0.08, 0, 0);
+
+  // Lower lip inner/outer parts for more detail
+  rotateBoneTo(fb.lipsLeftLowInner, openness * 0.18, 0, 0);
+  rotateBoneTo(fb.lipsRightLowInner, openness * 0.18, 0, 0);
+  rotateBoneTo(fb.lipsLeftLowOuter, openness * 0.15, 0, 0);
+  rotateBoneTo(fb.lipsRightLowOuter, openness * 0.15, 0, 0);
+
+  // Upper lip inner/outer parts
+  rotateBoneTo(fb.lipsLeftUpInner, -openness * 0.06, 0, 0);
+  rotateBoneTo(fb.lipsRightUpInner, -openness * 0.06, 0, 0);
+  rotateBoneTo(fb.lipsLeftUpOuter, -openness * 0.04, 0, 0);
+  rotateBoneTo(fb.lipsRightUpOuter, -openness * 0.04, 0, 0);
+
+  // Lip corners: wide (ee/ih) pull outward, narrow (ou/oh) push inward
+  const cornerZ = wide * 0.12 - narrow * 0.08;
+  rotateBoneTo(fb.lipsLeftCorner, 0, 0, -cornerZ);
+  rotateBoneTo(fb.lipsRightCorner, 0, 0, cornerZ);
+
+  // Jaw: keep still (no jaw rotation for lipsync)
+  rotateBoneTo(fb.jaw, 0, 0, 0);
+}
+
+/**
+ * Bone-driven facial expressions for GLB models without morph targets.
+ * Uses jaw, eyelid, eyebrow, and lip bones to approximate expressions.
+ */
+function setBoneExpression(name, value) {
+  const mapped = EXPR_MAP[name] || name.toLowerCase();
+  const fb = glbFacialBones;
+  const _q = new THREE.Quaternion();
+  const _e = new THREE.Euler();
+
+  // Helper: apply rotation delta relative to rest pose
+  function rotateBone(bone, rx, ry, rz) {
+    if (!bone) return;
+    const rest = bone.userData.restQuaternion;
+    if (!rest) { bone.userData.restQuaternion = bone.quaternion.clone(); }
+    _e.set(rx, ry, rz);
+    _q.setFromEuler(_e);
+    bone.quaternion.copy(bone.userData.restQuaternion).multiply(_q);
+  }
+
+  // Blink: rotate eyelid bones closed
+  if (mapped === 'blink') {
+    const angle = value * 0.4;  // ~23 degrees max
+    rotateBone(fb.leftEyelidUpper, angle, 0, 0);
+    rotateBone(fb.rightEyelidUpper, angle, 0, 0);
+    rotateBone(fb.leftEyelidLower, -angle * 0.3, 0, 0);
+    rotateBone(fb.rightEyelidLower, -angle * 0.3, 0, 0);
+    return;
+  }
+  if (mapped === 'blinkLeft') {
+    const angle = value * 0.4;
+    rotateBone(fb.leftEyelidUpper, angle, 0, 0);
+    rotateBone(fb.leftEyelidLower, -angle * 0.3, 0, 0);
+    return;
+  }
+  if (mapped === 'blinkRight') {
+    const angle = value * 0.4;
+    rotateBone(fb.rightEyelidUpper, angle, 0, 0);
+    rotateBone(fb.rightEyelidLower, -angle * 0.3, 0, 0);
+    return;
+  }
+
+  // Visemes (mouth shapes for lipsync) — lips only, no jaw
+  if (mapped === 'aa') {
+    // Open mouth wide — lips apart
+    rotateBone(fb.lipsLower, value * 0.25, 0, 0);
+    rotateBone(fb.lipsUpper, -value * 0.08, 0, 0);
+    rotateBone(fb.lipsLeftLowInner, value * 0.18, 0, 0);
+    rotateBone(fb.lipsRightLowInner, value * 0.18, 0, 0);
+    rotateBone(fb.lipsLeftLowOuter, value * 0.15, 0, 0);
+    rotateBone(fb.lipsRightLowOuter, value * 0.15, 0, 0);
+    return;
+  }
+  if (mapped === 'ih') {
+    // Slightly open, wide mouth
+    rotateBone(fb.lipsLower, value * 0.12, 0, 0);
+    rotateBone(fb.lipsLeftCorner, 0, 0, -value * 0.12);
+    rotateBone(fb.lipsRightCorner, 0, 0, value * 0.12);
+    return;
+  }
+  if (mapped === 'ou') {
+    // Rounded, slightly open
+    rotateBone(fb.lipsLower, value * 0.16, 0, 0);
+    rotateBone(fb.lipsUpper, -value * 0.05, 0, 0);
+    rotateBone(fb.lipsLeftCorner, 0, 0, value * 0.08);
+    rotateBone(fb.lipsRightCorner, 0, 0, -value * 0.08);
+    return;
+  }
+  if (mapped === 'ee') {
+    // Wide smile-ish
+    rotateBone(fb.lipsLower, value * 0.08, 0, 0);
+    rotateBone(fb.lipsLeftCorner, 0, 0, -value * 0.14);
+    rotateBone(fb.lipsRightCorner, 0, 0, value * 0.14);
+    return;
+  }
+  if (mapped === 'oh') {
+    // Round open mouth
+    rotateBone(fb.lipsLower, value * 0.20, 0, 0);
+    rotateBone(fb.lipsUpper, -value * 0.06, 0, 0);
+    rotateBone(fb.lipsLeftLowInner, value * 0.12, 0, 0);
+    rotateBone(fb.lipsRightLowInner, value * 0.12, 0, 0);
+    return;
+  }
+
+  // Emotions
+  if (mapped === 'happy') {
+    // Smile: lip corners up, slight squint
+    rotateBone(fb.lipsLeftCorner, -value * 0.08, 0, -value * 0.05);
+    rotateBone(fb.lipsRightCorner, -value * 0.08, 0, value * 0.05);
+    rotateBone(fb.leftEyelidLower, value * 0.1, 0, 0);
+    rotateBone(fb.rightEyelidLower, value * 0.1, 0, 0);
+    return;
+  }
+  if (mapped === 'angry') {
+    // Frown: eyebrows down
+    rotateBone(fb.leftEyebrowInner, value * 0.15, 0, 0);
+    rotateBone(fb.rightEyebrowInner, value * 0.15, 0, 0);
+    rotateBone(fb.leftEyebrowOuter, -value * 0.05, 0, 0);
+    rotateBone(fb.rightEyebrowOuter, -value * 0.05, 0, 0);
+    return;
+  }
+  if (mapped === 'sad') {
+    // Sad: inner eyebrows up, corners down
+    rotateBone(fb.leftEyebrowInner, -value * 0.12, 0, 0);
+    rotateBone(fb.rightEyebrowInner, -value * 0.12, 0, 0);
+    rotateBone(fb.lipsLeftCorner, value * 0.06, 0, 0);
+    rotateBone(fb.lipsRightCorner, value * 0.06, 0, 0);
+    return;
+  }
+  if (mapped === 'surprised') {
+    // Surprise: eyebrows up, mouth open
+    rotateBone(fb.leftEyebrowInner, -value * 0.15, 0, 0);
+    rotateBone(fb.leftEyebrowMid, -value * 0.15, 0, 0);
+    rotateBone(fb.leftEyebrowOuter, -value * 0.1, 0, 0);
+    rotateBone(fb.rightEyebrowInner, -value * 0.15, 0, 0);
+    rotateBone(fb.rightEyebrowMid, -value * 0.15, 0, 0);
+    rotateBone(fb.rightEyebrowOuter, -value * 0.1, 0, 0);
+    rotateBone(fb.jaw, value * 0.2, 0, 0);
+    return;
+  }
+  if (mapped === 'neutral') {
+    // Reset all facial bones to rest pose
+    for (const bone of Object.values(fb)) {
+      if (bone && bone.userData.restQuaternion) {
+        bone.quaternion.copy(bone.userData.restQuaternion);
+      }
+    }
+    return;
+  }
+}
+
+
+// ==================== COORDINATE CONVERSION ====================
+// VMC (Unity left-handed) → VRM (right-handed): negate Z and W
+function vmcQuatToThreeVRM(qx, qy, qz, qw) {
+  return new THREE.Quaternion(qx, qy, -qz, -qw);
+}
+
+function vmcPosToThreeVRM(x, y, z) {
+  return new THREE.Vector3(x, y, -z);
+}
+
+
+// ==================== SOCKET.IO ====================
+const socket = io();
+
+socket.on('connect', () => {
+  console.log('[WS] Verbunden mit Server');
+});
+
+socket.on('disconnect', () => {
+  console.log('[WS] Verbindung getrennt');
+});
+
+// --- Bone Updates ---
+socket.on('bones', (data) => {
+  // VRM mode: use humanoid
+  if (vrm && vrm.humanoid) {
+    boneUpdates++;
+    for (const [boneName, boneData] of Object.entries(data)) {
+      const vrmName = vmcBoneToVrm(boneName);
+      let node = null;
+      try { node = vrm.humanoid.getNormalizedBoneNode(vrmName); } catch(e) {}
+      if (!node) {
+        try { node = vrm.humanoid.getRawBoneNode(vrmName); } catch(e) {}
+      }
+      if (!node) continue;
+
+      if (boneData.q) {
+        const [qx, qy, qz, qw] = boneData.q;
+        node.quaternion.copy(vmcQuatToThreeVRM(qx, qy, qz, qw));
+      }
+      if (boneData.p && vrmName === 'hips') {
+        const [px, py, pz] = boneData.p;
+        node.position.copy(vmcPosToThreeVRM(px, py, pz));
+      }
+    }
+  // GLB mode: direct skeleton bone access via smart mapping
+  // 
+  // The challenge: VMC sends rotations for VRM T-pose skeleton.
+  // GLB bones have different rest orientations. We need to transform:
+  //
+  // For VRM: rest pose is identity, so bone.quaternion = vmcQuat directly.
+  // For GLB: we need to convert from VRM-space to GLB-bone-space:
+  //   bone.quaternion = restQ * inverseRestVRM * vmcQuat
+  // Since VRM rest = identity -> inverseRestVRM = identity
+  //   bone.quaternion = restQ * vmcQuat   (local-space delta)
+  //
+  // BUT this only works if the skeleton has the same bone orientations.
+  // Since GLB skeletons can differ, we use the "rebased" approach:
+  //   Store the inverse of the rest quaternion, then apply:
+  //   bone.quaternion = restQ * (restQ_inverse * restQ) * vmcQuat
+  //   simplified: bone.quaternion = restQ * vmcQuat
+  //
+  } else if (glbScene && Object.keys(glbBoneMap).length > 0) {
+    boneUpdates++;
+
+    // === DEBUG: Log first bone frame to diagnose orientation ===
+    if (boneUpdates <= 2) {
+      console.log('[DEBUG] First bone frame received. Bones:', Object.keys(data).length);
+      // Show mesh bounding box
+      const box = new THREE.Box3().setFromObject(glbScene);
+      const min = box.min, max = box.max;
+      console.log(`[DEBUG] Mesh bounds: X=[${min.x.toFixed(3)},${max.x.toFixed(3)}], Y=[${min.y.toFixed(3)},${max.y.toFixed(3)}], Z=[${min.z.toFixed(3)},${max.z.toFixed(3)}]`);
+      // Show key bone world positions
+      const checkBones = ['hips', 'head', 'leftFoot', 'rightFoot', 'spine', 'neck'];
+      for (const bn of checkBones) {
+        const b = glbBoneMap[bn];
+        if (b) {
+          const wp = new THREE.Vector3();
+          b.getWorldPosition(wp);
+          console.log(`[DEBUG] Bone '${bn}' (${b.name}): restQ=(${b.userData.restQuaternion?.toArray().map(v=>v.toFixed(3))}), worldPos=(${wp.toArray().map(v=>v.toFixed(3))})`);
+        }
+      }
+      // Show incoming VMC data for hips
+      if (data['Hips'] || data['hips']) {
+        const hd = data['Hips'] || data['hips'];
+        console.log(`[DEBUG] VMC Hips data:`, JSON.stringify(hd));
+      }
+    }
+
+    // Facial bones are controlled exclusively by expression/lipsync events
+    const FACIAL_VMC_SKIP = new Set(['jaw', 'leftEye', 'rightEye']);
+    for (const [boneName, boneData] of Object.entries(data)) {
+      const vrmName = vmcBoneToVrm(boneName);
+      if (FACIAL_VMC_SKIP.has(vrmName)) continue;
+      const bone = glbBoneMap[vrmName]
+        || glbBoneMap[boneName]
+        || glbBoneMap[boneName.toLowerCase()];
+      if (!bone) continue;
+
+      if (boneData.q) {
+        const [qx, qy, qz, qw] = boneData.q;
+        const vmcQuat = vmcQuatToThreeVRM(qx, qy, qz, qw);
+
+        // Right-side bones: GLB skeleton has mirrored local axes vs VRM.
+        const isRight = vrmName.startsWith('right') || boneName.startsWith('Right');
+        if (isRight) {
+          vmcQuat.x = -vmcQuat.x;
+          vmcQuat.w = -vmcQuat.w;
+        }
+
+        // Arm/hand bones: conjugate by 180° around Y (bone-length axis)
+        // to flip front/back. Conjugation = negate y and w components.
+        const isArm = vrmName.includes('UpperArm') || vrmName.includes('LowerArm')
+          || vrmName.includes('Hand') || vrmName.includes('Shoulder')
+          || vrmName.includes('Thumb') || vrmName.includes('Index')
+          || vrmName.includes('Middle') || vrmName.includes('Ring')
+          || vrmName.includes('Little')
+          || boneName.includes('UpperArm') || boneName.includes('Forearm')
+          || boneName.includes('Hand') || boneName.includes('Clavicle');
+        if (isArm) {
+          vmcQuat.x = -vmcQuat.x;
+          vmcQuat.y = -vmcQuat.y;
+        }
+
+        // Apply in local bone space: final = rest * vmcDelta
+        const rest = bone.userData.restQuaternion;
+        if (rest) {
+          bone.quaternion.multiplyQuaternions(rest, vmcQuat);
+        } else {
+          bone.quaternion.copy(vmcQuat);
+        }
+      }
+      if (boneData.p && (vrmName === 'hips' || boneName === 'Hips' || boneName === 'hips')) {
+        const [px, py, pz] = boneData.p;
+        const vmcPos = vmcPosToThreeVRM(px, py, pz);
+        const restPos = bone.userData.restPosition;
+        if (restPos) {
+          bone.position.set(
+            restPos.x + vmcPos.x,
+            restPos.y + vmcPos.y,
+            restPos.z + vmcPos.z
+          );
+        } else {
+          bone.position.copy(vmcPos);
+        }
+      }
+    }
+  }
+});
+
+// --- Blend Shapes (batched from OSC /VMC/Ext/Blend/Apply) ---
+socket.on('blend', (data) => {
+  if (!vrm && !glbScene) return;
+  blendUpdates++;
+  lastExternalBlendTime = performance.now();
+
+  // For GLB bone-driven mode: batch viseme keys and apply combined
+  const VISEME_KEYS = { 'A': 'aa', 'O': 'oh', 'E': 'ee', 'I': 'ih', 'U': 'ou',
+                        'a': 'aa', 'o': 'oh', 'e': 'ee', 'i': 'ih', 'u': 'ou' };
+  const useGlbBones = glbScene && !vrm
+    && (!glbMorphMap || Object.keys(glbMorphMap).length === 0)
+    && glbFacialBones && Object.keys(glbFacialBones).length > 0;
+
+  if (useGlbBones) {
+    // Split: viseme keys go to combined handler, rest goes to setExpression
+    const visemes = {};
+    let hasViseme = false;
+    for (const [name, value] of Object.entries(data)) {
+      if (VISEME_KEYS[name] !== undefined) {
+        visemes[VISEME_KEYS[name]] = Math.max(visemes[VISEME_KEYS[name]] || 0, parseFloat(value));
+        hasViseme = true;
+      } else {
+        setExpression(name, value);
+      }
+    }
+    if (hasViseme) {
+      applyBoneVisemes(visemes);
+    }
+  } else {
+    for (const [name, value] of Object.entries(data)) {
+      setExpression(name, value);
+    }
+  }
+});
+
+// --- Single Expression ---
+socket.on('expression', (data) => {
+  if (!vrm && !glbScene) return;
+  lastExternalBlendTime = performance.now();
+
+  if (data.name !== undefined && data.value !== undefined) {
+    setExpression(data.name, data.value);
+  }
+
+  // Reset all expressions
+  if (data.reset) {
+    if (vrm && vrm.expressionManager) {
+      for (const expr of vrm.expressionManager.expressions) {
+        vrm.expressionManager.setValue(expr.expressionName, 0);
+      }
+    } else if (glbScene) {
+      // Reset morph targets
+      if (glbMorphMap) {
+        for (const [morphName, targets] of Object.entries(glbMorphMap)) {
+          for (const t of targets) {
+            t.mesh.morphTargetInfluences[t.index] = 0;
+          }
+        }
+      }
+      // Reset facial bones to rest pose
+      if (glbFacialBones) {
+        for (const bone of Object.values(glbFacialBones)) {
+          if (bone && bone.userData.restQuaternion) {
+            bone.quaternion.copy(bone.userData.restQuaternion);
+          }
+        }
+      }
+    }
+  }
+});
+
+// --- Lip Sync (from TTS service) ---
+socket.on('lipsync', (data) => {
+  if (!vrm && !glbScene) return;
+  lastExternalBlendTime = performance.now();
+
+  const visemeMap = { A: 'aa', I: 'ih', U: 'ou', E: 'ee', O: 'oh' };
+  if (data.visemes) {
+    // GLB bone-driven: use combined viseme application
+    const useGlbBones = glbScene && !vrm
+      && (!glbMorphMap || Object.keys(glbMorphMap).length === 0)
+      && glbFacialBones && Object.keys(glbFacialBones).length > 0;
+
+    if (useGlbBones) {
+      const visemes = {};
+      for (const [key, value] of Object.entries(data.visemes)) {
+        const mapped = visemeMap[key] || key;
+        visemes[mapped] = Math.max(visemes[mapped] || 0, parseFloat(value));
+      }
+      applyBoneVisemes(visemes);
+    } else {
+      for (const [key, value] of Object.entries(data.visemes)) {
+        setExpression(visemeMap[key] || key, value);
+      }
+    }
+  }
+});
+
+// --- Camera View (remote control via API) ---
+socket.on('camera_view', (data) => {
+  if (!data.preset) return;
+  if (!vrm && !glbScene) {
+    // Model noch nicht geladen -- State puffern
+    _pendingCameraState = { type: 'preset', preset: data.preset };
+    console.log('[Camera] Preset gepuffert (Model laedt noch):', data.preset);
+    return;
+  }
+  const presets = getModelPresets();
+  const p = presets[data.preset];
+  if (p) {
+    camera.position.set(...p.pos);
+    controls.target.set(...p.target);
+    controls.update();
+    console.log('[Camera] Remote View:', data.preset);
+  } else {
+    console.warn('[Camera] Unbekanntes Preset:', data.preset);
+  }
+});
+
+// --- Camera Move (remote control, absolute position) ---
+socket.on('camera_move', (data) => {
+  if (!vrm) {
+    // Model noch nicht geladen — State puffern
+    _pendingCameraState = { type: 'position', ...data };
+    console.log('[Camera] Position gepuffert (Model lädt noch)');
+    return;
+  }
+  if (data.position) camera.position.set(...data.position);
+  if (data.target) controls.target.set(...data.target);
+  if (data.fov) {
+    camera.fov = data.fov;
+    camera.updateProjectionMatrix();
+  }
+  controls.update();
+  console.log('[Camera] Remote Move:', data);
+});
+
+
+// ==================== AUTO BLINK ====================
+let lastExternalBlendTime = 0;
+let nextBlinkDelay = 2 + Math.random() * 4;
+let blinkTimer = 0;
+let isBlinking = false;
+
+function updateBlink(dt) {
+  // Nicht auto-blinken wenn externe Blend-Daten kommen
+  if (performance.now() - lastExternalBlendTime < 2000) return;
+
+  blinkTimer += dt;
+  if (!isBlinking && blinkTimer > nextBlinkDelay) {
+    isBlinking = true;
+    setExpression('Blink', 1.0);
+
+    const blinkDuration = 80 + Math.random() * 60;
+    setTimeout(() => {
+      setExpression('Blink', 0.0);
+      isBlinking = false;
+      blinkTimer = 0;
+      nextBlinkDelay = 2 + Math.random() * 5;
+    }, blinkDuration);
+  }
+}
+
+
+// ==================== IDLE BREATHING ====================
+let breathPhase = 0;
+
+function updateBreathing(dt) {
+  if (!vrm || !vrm.humanoid) return;
+
+  breathPhase += dt * 1.2; // ~1.2 Hz breathing
+  const breathAmount = Math.sin(breathPhase) * 0.003;
+
+  // Subtle spine movement for breathing
+  const spine = vrm.humanoid.getNormalizedBoneNode('spine');
+  if (spine) {
+    // Very subtle rotation on X axis
+    const breathQuat = new THREE.Quaternion();
+    breathQuat.setFromEuler(new THREE.Euler(breathAmount, 0, 0));
+    // Only apply breathing if no external bone data for spine
+    // (external data overrides breathing)
+  }
+}
+
+
+// ==================== RENDER LOOP ====================
+const clock = new THREE.Clock();
+let frameCount = 0;
+
+function animate() {
+  requestAnimationFrame(animate);
+
+  const dt = clock.getDelta();
+
+  if (vrm) {
+    updateBlink(dt);
+    vrm.update(dt); // Updates spring bones, lookAt, etc.
+  }
+  // GLB animation mixer update + auto-blink
+  if (glbScene) {
+    updateBlink(dt);
+    if (glbScene.userData.mixer) {
+      glbScene.userData.mixer.update(dt);
+    }
+  }
+
+  controls.update();
+  renderer.render(scene, camera);
+
+  // HUD update every 30 frames
+  frameCount++;
+  if (frameCount % 30 === 0) {
+    updateHud();
+  }
+}
+
+animate();
+
+
+// ==================== RESIZE ====================
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+
+// ==================== KEYBOARD SHORTCUTS ====================
+window.addEventListener('keydown', (e) => {
+  // F: Toggle fullscreen
+  if (e.key === 'f' || e.key === 'F') {
+    if (document.fullscreenElement) {
+      document.exitFullscreen();
+    } else {
+      document.documentElement.requestFullscreen();
+    }
+  }
+
+  // H: Toggle HUD
+  if (e.key === 'h' || e.key === 'H') {
+    hudEl.classList.toggle('hidden');
+  }
+
+  // R: Reset camera to saved config position
+  if (e.key === 'r' || e.key === 'R') {
+    camera.fov = defaultFov;
+    camera.updateProjectionMatrix();
+    camera.position.set(...defaultPos);
+    controls.target.set(...defaultTarget);
+    controls.update();
+  }
+
+  // S: Save current camera position to config
+  if (e.key === 's' || e.key === 'S') {
+    e.preventDefault();
+    saveCameraPosition();
+  }
+
+  // A: Auto-frame model (front)
+  if (e.key === 'a' || e.key === 'A') {
+    if (vrm) autoFrameModel(vrm.scene, 'front');
+    else if (glbScene) autoFrameAnyModel(glbScene);
+  }
+
+  // Nummern-Presets (dynamisch basierend auf Modell)
+  const presetKeys = {
+    '1': 'front',           // Vorderseite komplett
+    '2': 'front_bust',      // Vorderseite Brust
+    '3': 'face',            // Gesicht
+    '4': 'face_close',      // Gesicht extrem nah
+    '5': 'front_hip',       // Hüfte vorne
+    '6': 'front_thigh',     // Oberschenkel vorne
+    '7': 'front_legs',      // Beine vorne
+    '8': 'back',            // Rückseite komplett
+    '9': 'back_butt',       // Po
+    '0': 'back_butt_close', // Po nah
+  };
+
+  // Buchstaben-Presets für weitere Ansichten
+  const letterPresets = {
+    'q': 'back_bust',        // Rücken Oberkörper
+    'w': 'back_thigh',       // Oberschenkel hinten
+    'e': 'back_legs',        // Beine hinten
+    'z': 'side_right',       // Seite rechts
+    'x': 'side_right_close', // Seite rechts nah
+    'c': 'side_left',        // Seite links
+    'v': 'side_left_close',  // Seite links nah
+    't': 'top',              // Von oben
+    'b': 'bottom',           // Füße
+    'g': 'front_feet',       // Füße vorne nah
+  };
+
+  if (vrm) {
+    const key = e.key;
+    const presetName = presetKeys[key] || letterPresets[key.toLowerCase()];
+    if (presetName) {
+      const presets = getModelPresets();
+      const p = presets[presetName];
+      if (p) {
+        camera.position.set(...p.pos);
+        controls.target.set(...p.target);
+        controls.update();
+      }
+    }
+  } else if (glbScene && (e.key === '1' || e.key === 'a' || e.key === 'A')) {
+    // Fuer GLB: Taste 1 = Auto-Frame
+    autoFrameAnyModel(glbScene);
+  }
+});
+
+console.log(`[WebAvatar] Tastenkürzel:
+  F=Fullscreen, H=HUD, R=Reset, S=Speichern, A=Auto-Frame
+  1=Vorne | 2=Brust | 3=Gesicht | 4=Gesicht-Nah | 5=Hüfte | 6=Oberschenkel | 7=Beine
+  8=Hinten | 9=Po | 0=Po-Nah
+  Q=Rücken | W=Oberschenkel-Hinten | E=Beine-Hinten
+  Z=Seite-R | X=Seite-R-Nah | C=Seite-L | V=Seite-L-Nah
+  T=Oben | B=Unten | G=Füße`);
+
+</script>
+</body>
+</html>

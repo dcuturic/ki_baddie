@@ -15,6 +15,8 @@ import traceback
 import atexit
 import shlex
 import shutil
+import urllib.request
+import urllib.error
 from pathlib import Path
 from dataclasses import dataclass, asdict
 from datetime import datetime
@@ -585,7 +587,11 @@ class ProcessManager:
                     if python_executable:
                         py_path = Path(python_executable)
                         if not py_path.is_absolute():
-                            py_path = (PROJECT_ROOT / py_path).resolve()
+                            # Try relative to service dir first, then project root
+                            candidate = (work_dir / py_path).resolve()
+                            if not candidate.exists():
+                                candidate = (PROJECT_ROOT / py_path).resolve()
+                            py_path = candidate
                         else:
                             py_path = py_path.resolve()
 
@@ -711,22 +717,74 @@ class ProcessManager:
                     service_process.pid = None
                     return {'success': True, 'message': 'Service already stopped'}
                 
-                try:
-                    service_process.process.terminate()
+                killed = False
+
+                # Helper: kill an entire process tree (parent + children)
+                def _kill_tree(pid: int, label: str = "") -> bool:
                     try:
-                        service_process.process.wait(timeout=5)
-                    except subprocess.TimeoutExpired:
-                        service_process.process.kill()
-                        service_process.process.wait()
-                except Exception as e:
-                    logger.warning(f"Error terminating process: {e}")
+                        parent = psutil.Process(pid)
+                        children = parent.children(recursive=True)
+                        # Terminate children first, then parent
+                        for child in children:
+                            try:
+                                child.terminate()
+                            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                                pass
+                        parent.terminate()
+                        # Wait for parent + children
+                        gone, alive = psutil.wait_procs([parent] + children, timeout=5)
+                        # Force-kill anything still alive
+                        for p in alive:
+                            try:
+                                p.kill()
+                            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                                pass
+                        if alive:
+                            psutil.wait_procs(alive, timeout=3)
+                        logger.info(f"Killed process tree for '{service_id}'{label}: pid={pid}, children={len(children)}")
+                        return True
+                    except psutil.NoSuchProcess:
+                        return True  # already dead
+                    except Exception as e:
+                        logger.warning(f"Error killing process tree{label}: {e}")
+                        return False
+
+                # Method 1: kill process tree via subprocess handle
+                if service_process.process and service_process.process.poll() is None:
+                    killed = _kill_tree(service_process.process.pid, " (subprocess)")
+                    if killed:
+                        try:
+                            service_process.process.wait(timeout=2)
+                        except Exception:
+                            pass
+
+                # Method 2: kill process tree via PID (discovered or orphaned)
+                if not killed and service_process.pid:
+                    killed = _kill_tree(service_process.pid, " (pid)")
+
+                # Method 3: kill by port as last resort
+                if not killed:
+                    service_config = self.config.get('services', {}).get(service_id, {})
+                    service_path = service_config.get('path', '')
+                    if service_path:
+                        raw_path = self._resolve_service_raw_path(service_path)
+                        target_port = self._resolve_service_port(service_config, raw_path)
+                        if target_port:
+                            port_result = self._kill_process_on_port(target_port)
+                            if port_result.get('killed_pids'):
+                                killed = True
+                                logger.info(f"Killed service '{service_id}' via port {target_port}")
                 
                 service_process.status = 'stopped'
                 service_process.pid = None
                 service_process.process = None
                 
-                logger.info(f"Stopped service '{service_id}'")
-                return {'success': True, 'service_id': service_id}
+                if killed:
+                    logger.info(f"Stopped service '{service_id}'")
+                    return {'success': True, 'service_id': service_id}
+                else:
+                    logger.warning(f"Could not confirm stop for '{service_id}'")
+                    return {'success': True, 'service_id': service_id, 'warning': 'Process may still be running'}
                 
         except Exception as e:
             logger.error(f"Error stopping service '{service_id}': {e}")
@@ -754,11 +812,22 @@ class ProcessManager:
     def is_running(self, service_id: str) -> bool:
         """Check if a service is running."""
         service_process = self.processes.get(service_id)
-        if not service_process or not service_process.process:
+        if not service_process:
             return False
-        
-        poll = service_process.process.poll()
-        return poll is None
+
+        # Check via subprocess handle
+        if service_process.process:
+            poll = service_process.process.poll()
+            return poll is None
+
+        # Check via PID (discovered processes after manager restart)
+        if service_process.pid:
+            try:
+                return psutil.pid_exists(service_process.pid)
+            except Exception:
+                return False
+
+        return False
     
     def get_status(self, service_id: str) -> Dict:
         """Get status of a service."""
@@ -1944,7 +2013,10 @@ def api_service_start(instance_name, service_id):
     try:
         pm.current_instance = instance_name
         result = pm.start_service(service_id, instance_name)
-        return jsonify(result), (200 if result.get('success') else 400)
+        status_code = 200 if result.get('success') else 400
+        if not result.get('success'):
+            logger.error(f"Service start failed '{instance_name}/{service_id}': {result.get('error', 'unknown')}")
+        return jsonify(result), status_code
     except Exception as e:
         logger.error(f"API error (service_start): {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
@@ -2102,6 +2174,100 @@ def api_save_service_config(service_id):
         return jsonify({'success': False, 'error': 'Failed to save config'}), 500
     except Exception as e:
         logger.error(f"API error (save_service_config): {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/service/<service_id>/requests', methods=['GET'])
+def api_service_requests(service_id):
+    """Get predefined API requests for a service."""
+    try:
+        service_cfg = pm.config.get('services', {}).get(service_id)
+        if not service_cfg:
+            return jsonify({'success': False, 'error': 'Service not found'}), 404
+        
+        requests_list = service_cfg.get('requests', [])
+        return jsonify({'success': True, 'service_id': service_id, 'requests': requests_list}), 200
+    except Exception as e:
+        logger.error(f"API error (service_requests): {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/service/<service_id>/proxy', methods=['POST'])
+def api_service_proxy(service_id):
+    """Proxy a request to a running service. Expects JSON with method, path, and optional body."""
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'success': False, 'error': 'No JSON body'}), 400
+        
+        method = data.get('method', 'GET').upper()
+        path = data.get('path', '/')
+        body = data.get('body')
+        
+        # Resolve service port
+        service_cfg = pm.config.get('services', {}).get(service_id)
+        if not service_cfg:
+            return jsonify({'success': False, 'error': 'Service not found'}), 404
+        
+        raw_path = pm._resolve_service_raw_path(service_cfg.get('path', ''))
+        port = pm._resolve_service_port(service_cfg, raw_path)
+        if not port:
+            return jsonify({'success': False, 'error': 'Cannot resolve service port'}), 400
+        
+        # Build target URL
+        target_url = f"http://127.0.0.1:{port}{path}"
+        
+        # Prepare request
+        req_body = None
+        if body is not None and method in ('POST', 'PUT', 'PATCH'):
+            req_body = json.dumps(body).encode('utf-8')
+        
+        req = urllib.request.Request(
+            target_url,
+            data=req_body,
+            method=method
+        )
+        req.add_header('Content-Type', 'application/json')
+        req.add_header('Accept', 'application/json')
+        
+        try:
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                resp_body = resp.read().decode('utf-8', errors='replace')
+                content_type = resp.headers.get('Content-Type', '')
+                
+                # Try to parse as JSON
+                resp_data = None
+                if 'json' in content_type:
+                    try:
+                        resp_data = json.loads(resp_body)
+                    except json.JSONDecodeError:
+                        resp_data = None
+                
+                return jsonify({
+                    'success': True,
+                    'status_code': resp.status,
+                    'content_type': content_type,
+                    'response': resp_data if resp_data is not None else resp_body,
+                    'is_json': resp_data is not None
+                }), 200
+                
+        except urllib.error.HTTPError as e:
+            error_body = e.read().decode('utf-8', errors='replace') if e.fp else ''
+            return jsonify({
+                'success': False,
+                'status_code': e.code,
+                'error': f"HTTP {e.code}: {e.reason}",
+                'response': error_body
+            }), 200  # Return 200 so frontend can handle the error
+            
+        except urllib.error.URLError as e:
+            return jsonify({
+                'success': False,
+                'error': f"Service nicht erreichbar: {str(e.reason)}"
+            }), 502
+            
+    except Exception as e:
+        logger.error(f"API error (service_proxy): {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 # ============================================================================

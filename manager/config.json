@@ -21,7 +21,61 @@
       "python_executable": "./.venv/Scripts/python.exe",
       "type": "python",
       "icon": "💬",
-      "color": "#7c3aed"
+      "color": "#7c3aed",
+      "requests": [
+        {
+          "name": "Chat",
+          "description": "Nachricht an den Chat senden",
+          "method": "POST",
+          "path": "/chat",
+          "body": {
+            "message": "User1: Hallo, wie geht es dir?"
+          }
+        },
+        {
+          "name": "Chat Free",
+          "description": "Freie Nachricht ohne Memory/History",
+          "method": "POST",
+          "path": "/chat-free",
+          "body": {
+            "message": "Erzähl mir einen Witz",
+            "emotion": "fun"
+          }
+        },
+        {
+          "name": "Characters auflisten",
+          "description": "Alle verfügbaren Characters anzeigen",
+          "method": "GET",
+          "path": "/characters"
+        },
+        {
+          "name": "Aktueller Character",
+          "description": "Info über den geladenen Character",
+          "method": "GET",
+          "path": "/character/current"
+        },
+        {
+          "name": "Character wechseln",
+          "description": "Zu einem anderen Character wechseln",
+          "method": "POST",
+          "path": "/character/switch",
+          "body": {
+            "character": "dilara"
+          }
+        },
+        {
+          "name": "Debug: Gedanken",
+          "description": "Letzte 80 Gedanken aus der DB",
+          "method": "GET",
+          "path": "/debug/thoughts"
+        },
+        {
+          "name": "Debug: Memory Count",
+          "description": "Anzahl Gedanken und Erinnerungen",
+          "method": "GET",
+          "path": "/debug/memory_count"
+        }
+      ]
     },
     "main_server": {
       "name": "Main Server",
@@ -30,7 +84,57 @@
       "python_executable": "./.venv/Scripts/python.exe",
       "type": "python",
       "icon": "🎯",
-      "color": "#3b82f6"
+      "color": "#3b82f6",
+      "requests": [
+        {
+          "name": "Health Check",
+          "description": "Server-Status prüfen",
+          "method": "GET",
+          "path": "/health"
+        },
+        {
+          "name": "TTS Direct",
+          "description": "Text direkt an TTS senden",
+          "method": "GET",
+          "path": "/call-tts/Hallo Welt, das ist ein Test"
+        },
+        {
+          "name": "Chat + TTS",
+          "description": "Chat-Antwort generieren und vorlesen",
+          "method": "GET",
+          "path": "/call-tts-dilara/User1: Hey was geht ab?"
+        },
+        {
+          "name": "Chat Free + TTS (Begrüßen)",
+          "description": "Freier Modus: Begrüßung generieren",
+          "method": "GET",
+          "path": "/call-tts-dilara-free/begrüßen/TestUser"
+        },
+        {
+          "name": "Chat Free + TTS (Roasten)",
+          "description": "Freier Modus: Jemanden roasten",
+          "method": "GET",
+          "path": "/call-tts-dilara-free/roasten/TestUser"
+        },
+        {
+          "name": "Motion abspielen",
+          "description": "Eine Motion am Avatar abspielen",
+          "method": "POST",
+          "path": "/play/motion/wave"
+        },
+        {
+          "name": "Pose abspielen",
+          "description": "Eine Pose am Avatar setzen",
+          "method": "POST",
+          "path": "/play/pose/idle"
+        },
+        {
+          "name": "Random Motion",
+          "description": "Zufällige Motion abspielen",
+          "method": "GET",
+          "path": "/play/motion/random"
+        }
+      ]
     },
     "text_to_speech": {
       "name": "Text-to-Speech",
@@ -39,7 +143,59 @@
       "python_executable": "./.venv311/Scripts/python.exe",
       "type": "python",
       "icon": "🔊",
-      "color": "#f59e0b"
+      "color": "#f59e0b",
+      "requests": [
+        {
+          "name": "Health Check",
+          "description": "TTS Status und GPU Info",
+          "method": "GET",
+          "path": "/health"
+        },
+        {
+          "name": "Text-to-Speech",
+          "description": "Text in Sprache umwandeln",
+          "method": "POST",
+          "path": "/tts",
+          "body": {
+            "text": "Hallo, das ist ein Test!",
+            "emotion": "neutral",
+            "play_audio": true
+          }
+        },
+        {
+          "name": "TTS mit Emotion",
+          "description": "Sprachausgabe mit Emotion",
+          "method": "POST",
+          "path": "/tts",
+          "body": {
+            "text": {"value": "Ich bin so glücklich!", "emotion": "joy"},
+            "play_audio": true
+          }
+        },
+        {
+          "name": "FX Status",
+          "description": "Voice FX State anzeigen",
+          "method": "GET",
+          "path": "/fx_state"
+        },
+        {
+          "name": "FX Toggle",
+          "description": "Voice FX ein/ausschalten",
+          "method": "POST",
+          "path": "/fx_toggle",
+          "body": {
+            "enabled": true,
+            "global_enabled": true,
+            "emotion_enabled": false
+          }
+        },
+        {
+          "name": "Audio Stream Status",
+          "description": "Virtual Audio Stream Status",
+          "method": "GET",
+          "path": "/audio-stream/status"
+        }
+      ]
     },
     "vroid_poser": {
       "name": "VRoid Poser",
@@ -48,7 +204,90 @@
       "python_executable": "./.venv/Scripts/python.exe",
       "type": "python",
       "icon": "🎭",
-      "color": "#ec4899"
+      "color": "#ec4899",
+      "requests": [
+        {
+          "name": "Health Check",
+          "description": "Poser Status prüfen",
+          "method": "GET",
+          "path": "/health"
+        },
+        {
+          "name": "Poses auflisten",
+          "description": "Alle verfügbaren Poses anzeigen",
+          "method": "GET",
+          "path": "/poses"
+        },
+        {
+          "name": "Motions auflisten",
+          "description": "Alle verfügbaren Motions anzeigen",
+          "method": "GET",
+          "path": "/motions"
+        },
+        {
+          "name": "Pose abspielen",
+          "description": "Eine Pose setzen",
+          "method": "POST",
+          "path": "/play/pose/idle"
+        },
+        {
+          "name": "Motion abspielen",
+          "description": "Eine Motion abspielen",
+          "method": "POST",
+          "path": "/play/motion/wave"
+        },
+        {
+          "name": "Random Motion",
+          "description": "Zufällige Kampf-Motion",
+          "method": "GET",
+          "path": "/play/motion/random"
+        },
+        {
+          "name": "Stop Animation",
+          "description": "Aktuelle Animation stoppen",
+          "method": "POST",
+          "path": "/stop"
+        },
+        {
+          "name": "Reset Pose",
+          "description": "Alle Bones zurücksetzen",
+          "method": "POST",
+          "path": "/reset"
+        },
+        {
+          "name": "Auto-Blink Toggle",
+          "description": "Automatisches Blinzeln ein/aus",
+          "method": "POST",
+          "path": "/face/auto_blink",
+          "body": {
+            "enabled": true
+          }
+        },
+        {
+          "name": "Idle Motion Toggle",
+          "description": "Idle-Animation ein/aus",
+          "method": "POST",
+          "path": "/idle_motion",
+          "body": {
+            "enabled": true
+          }
+        },
+        {
+          "name": "Offset setzen",
+          "description": "Avatar Position verschieben",
+          "method": "POST",
+          "path": "/offset",
+          "body": {
+            "offset": [0, 0, 0]
+          }
+        },
+        {
+          "name": "Pose JSON Config",
+          "description": "Pose-Konvertierung Optionen anzeigen",
+          "method": "GET",
+          "path": "/pose_json/config"
+        }
+      ]
     },
     "vroid_emotion": {
       "color": "#10b981",
@@ -57,7 +296,162 @@
       "path": "../VroidEmotion",
       "script": "app.py",
       "python_executable": "./.venv/Scripts/python.exe",
-      "type": "python"
+      "type": "python",
+      "requests": [
+        {
+          "name": "Health Check",
+          "description": "Emotion Service Status",
+          "method": "GET",
+          "path": "/health"
+        },
+        {
+          "name": "Emotion setzen",
+          "description": "Gesichtsausdruck ändern",
+          "method": "POST",
+          "path": "/emotion",
+          "body": {
+            "emotion": "joy",
+            "intensity": 1.0,
+            "fade": 0.35
+          }
+        },
+        {
+          "name": "Emotion: Angry",
+          "description": "Wütender Gesichtsausdruck",
+          "method": "POST",
+          "path": "/emotion",
+          "body": {
+            "emotion": "angry",
+            "intensity": 1.0,
+            "fade": 0.35
+          }
+        },
+        {
+          "name": "Emotion: Sorrow",
+          "description": "Trauriger Gesichtsausdruck",
+          "method": "POST",
+          "path": "/emotion",
+          "body": {
+            "emotion": "sorrow",
+            "intensity": 1.0,
+            "fade": 0.35
+          }
+        },
+        {
+          "name": "Emotion: Surprise",
+          "description": "Überraschter Gesichtsausdruck",
+          "method": "POST",
+          "path": "/emotion",
+          "body": {
+            "emotion": "surprise",
+            "intensity": 1.0,
+            "fade": 0.35
+          }
+        },
+        {
+          "name": "Reset",
+          "description": "Alle BlendShapes zurücksetzen",
+          "method": "POST",
+          "path": "/reset"
+        },
+        {
+          "name": "Fade-Time setzen",
+          "description": "Übergangszeit ändern",
+          "method": "POST",
+          "path": "/fade",
+          "body": {
+            "seconds": 0.4
+          }
+        }
+      ]
+    },
+    "web_avatar": {
+      "name": "Web Avatar",
+      "path": "../web_avatar",
+      "script": "app.py",
+      "python_executable": "./.venv/Scripts/python.exe",
+      "type": "python",
+      "icon": "🧑‍💻",
+      "color": "#06b6d4",
+      "requests": [
+        {
+          "name": "Health Check",
+          "description": "Avatar Service Status",
+          "method": "GET",
+          "path": "/health"
+        },
+        {
+          "name": "VRM Config",
+          "description": "Kamera + Model Konfiguration",
+          "method": "GET",
+          "path": "/vrm/config"
+        },
+        {
+          "name": "Kamera: Front",
+          "description": "Kamera auf Front-Ansicht",
+          "method": "POST",
+          "path": "/api/camera/view",
+          "body": {
+            "preset": "front"
+          }
+        },
+        {
+          "name": "Kamera: Face Close",
+          "description": "Kamera nah ans Gesicht",
+          "method": "POST",
+          "path": "/api/camera/view",
+          "body": {
+            "preset": "face_close"
+          }
+        },
+        {
+          "name": "Kamera: Front Bust",
+          "description": "Kamera auf Oberkörper",
+          "method": "POST",
+          "path": "/api/camera/view",
+          "body": {
+            "preset": "front_bust"
+          }
+        },
+        {
+          "name": "Kamera: Back",
+          "description": "Kamera von hinten",
+          "method": "POST",
+          "path": "/api/camera/view",
+          "body": {
+            "preset": "back"
+          }
+        },
+        {
+          "name": "Blend Shapes setzen",
+          "description": "BlendShape-Werte senden",
+          "method": "POST",
+          "path": "/api/blend",
+          "body": {
+            "Joy": 1.0
+          }
+        },
+        {
+          "name": "Kamera Position setzen",
+          "description": "Freie Kamera-Position",
+          "method": "POST",
+          "path": "/api/camera/position",
+          "body": {
+            "position": [0, 1.35, 0.9],
+            "target": [0, 1.25, 0]
+          }
+        },
+        {
+          "name": "Kamera speichern",
+          "description": "Aktuelle Position als Default speichern",
+          "method": "POST",
+          "path": "/api/camera/save",
+          "body": {
+            "position": [0, 1.35, 0.9],
+            "target": [0, 1.25, 0]
+          }
+        }
+      ]
     }
   },
   "default_instance": "default"

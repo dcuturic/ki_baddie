@@ -1,0 +1,30 @@
+{
+  "camera": {
+    "fov": 28,
+    "position": [
+      0,
+      1.35,
+      0.9
+    ],
+    "target": [
+      0,
+      1.25,
+      0
+    ]
+  },
+  "osc": {
+    "enabled": true,
+    "forward_enabled": false,
+    "forward_host": "127.0.0.1",
+    "forward_port": 39540,
+    "listen_host": "0.0.0.0",
+    "listen_port": 39539
+  },
+  "server": {
+    "host": "0.0.0.0",
+    "port": 5006
+  },
+  "vrm": {
+    "model_path": "models/dilara.vrm"
+  }
+}

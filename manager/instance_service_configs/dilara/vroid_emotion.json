@@ -1,4 +1,8 @@
 {
+  "view_model": "web_avatar",
+  "services": {
+    "web_avatar": "http://127.0.0.1:5006"
+  },
   "blend_controller": {
     "fade_time": 0.35,
     "fps": 60
@@ -49,9 +53,5 @@
     "debug": false,
     "host": "0.0.0.0",
     "port": 5004
-  },
-  "services": {
-    "web_avatar": "http://127.0.0.1:5006"
-  },
-  "view_model": "web_avatar"
+  }
 }

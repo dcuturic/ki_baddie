@@ -6,6 +6,7 @@ import math
 import json
 import os
 
+import requests as http_requests
 from flask import Flask, request, jsonify
 from pythonosc.udp_client import SimpleUDPClient
 
@@ -28,6 +29,11 @@ def load_config() -> Dict:
         return {}
 
 CONFIG = load_config()
+
+# View model: "vseeface" (OSC) or "web_avatar" (HTTP)
+VIEW_MODEL = CONFIG.get("view_model", "vseeface").strip().lower()
+WEB_AVATAR_URL = CONFIG.get("services", {}).get("web_avatar", "http://127.0.0.1:5006")
+print(f"[Emotion] VIEW_MODEL = {VIEW_MODEL!r}", flush=True)
 
 # ----------------------------
 # VSeeFace / VMC OSC Settings
@@ -94,10 +100,16 @@ class SmoothBlendController:
     - hält current_values pro key
     - target_values pro key
     - background thread interpoliert current -> target über fade_time
+    Unterstützt OSC (VSeeFace) und HTTP (web_avatar) je nach VIEW_MODEL.
     """
 
     def __init__(self, host: str, port: int, keys: list[str]):
-        self.client = SimpleUDPClient(host, port)
+        self.use_web_avatar = (VIEW_MODEL == "web_avatar")
+        if self.use_web_avatar:
+            self.client = None
+            print(f"[Emotion] Blend via HTTP -> {WEB_AVATAR_URL}", flush=True)
+        else:
+            self.client = SimpleUDPClient(host, port)
         self.lock = threading.Lock()
 
         self.keys = keys[:]  # alle keys, die wir managen/resetten
@@ -118,10 +130,29 @@ class SmoothBlendController:
         self._thread.start()
 
     def _send_val(self, key: str, value: float):
+        if self.use_web_avatar:
+            return  # values are batched and sent in _send_batch
         self.client.send_message(OSC_VAL, [key, float(value)])
 
     def _apply(self):
+        if self.use_web_avatar:
+            return  # apply is handled in _send_batch
         self.client.send_message(OSC_APPLY, 1)
+
+    def _send_batch(self, changed: list):
+        """Send a batch of changed blend values to web_avatar via HTTP."""
+        if not changed:
+            return
+        if self.use_web_avatar:
+            data = {k: v for k, v in changed}
+            try:
+                http_requests.post(f"{WEB_AVATAR_URL}/api/blend", json=data, timeout=2)
+            except Exception:
+                pass
+        else:
+            for k, v in changed:
+                self._send_val(k, v)
+            self._apply()
 
     def set_fade_time(self, seconds: float):
         with self.lock:
@@ -181,10 +212,7 @@ class SmoothBlendController:
                         cur[k] = nv
 
                 if changed:
-                    # send only changed
-                    for k, v in changed:
-                        self._send_val(k, v)
-                    self._apply()
+                    self._send_batch(changed)
 
                 with self.lock:
                     self.current_values.update(cur)
@@ -211,9 +239,7 @@ class SmoothBlendController:
                     cur[k] = nv
 
                 if changed:
-                    for k, v in changed:
-                        self._send_val(k, v)
-                    self._apply()
+                    self._send_batch(changed)
 
                 with self.lock:
                     self.current_values.update(cur)

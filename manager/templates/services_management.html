@@ -159,6 +159,11 @@
             <button class="btn btn-secondary" onclick="toggleServiceLogs('{{ service_id }}')">
                 📋 Logs
             </button>
+            {% if service.requests %}
+            <button class="btn btn-info" onclick="openRequestsModal('{{ service_id }}', '{{ service.name }}')">
+                📡 Requests ({{ service.requests|length }})
+            </button>
+            {% endif %}
         </div>
         
         <!-- Logs Viewer -->
@@ -176,6 +181,63 @@
     </div>
     {% endfor %}
     {% endif %}
+</div>
+
+<!-- Requests Modal Overlay -->
+<div class="requests-modal-overlay" id="requestsModalOverlay" onclick="closeRequestsModal(event)">
+    <div class="requests-modal" onclick="event.stopPropagation()">
+        <div class="requests-modal-header">
+            <div class="requests-modal-title">
+                <span id="requestsModalIcon">📡</span>
+                <h3 id="requestsModalServiceName">Service Requests</h3>
+            </div>
+            <button class="requests-modal-close" onclick="closeRequestsModal()">&times;</button>
+        </div>
+        <div class="requests-modal-body">
+            <div class="requests-sidebar" id="requestsSidebar">
+                <!-- Request buttons get populated here -->
+            </div>
+            <div class="requests-content">
+                <div class="requests-empty-state" id="requestsEmptyState">
+                    <p>👈 Wähle einen Request aus der Liste</p>
+                </div>
+                <div class="requests-form" id="requestsForm" style="display:none;">
+                    <div class="request-info-bar">
+                        <span class="request-method-badge" id="reqMethodBadge">GET</span>
+                        <span class="request-path-display" id="reqPathDisplay">/path</span>
+                    </div>
+                    <p class="request-description" id="reqDescription"></p>
+                    
+                    <!-- Editable path -->
+                    <div class="request-field-group">
+                        <label>Pfad</label>
+                        <input type="text" class="request-input" id="reqPathInput" />
+                    </div>
+                    
+                    <!-- Editable body (only for POST/PUT/PATCH) -->
+                    <div class="request-field-group" id="reqBodyGroup" style="display:none;">
+                        <label>Request Body (JSON)</label>
+                        <textarea class="request-textarea" id="reqBodyInput" rows="8" spellcheck="false"></textarea>
+                    </div>
+                    
+                    <div class="request-actions">
+                        <button class="btn btn-success btn-large" id="reqSendBtn" onclick="sendCurrentRequest()">
+                            🚀 Senden
+                        </button>
+                    </div>
+                    
+                    <!-- Response -->
+                    <div class="request-response-section" id="reqResponseSection" style="display:none;">
+                        <div class="request-response-header">
+                            <h4>Response</h4>
+                            <span class="request-status-code" id="reqStatusCode"></span>
+                        </div>
+                        <pre class="request-response-body" id="reqResponseBody"></pre>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 </div>
 
 {% endblock %}
@@ -485,5 +547,198 @@ function escapeHtml(text) {
 }
 
 document.addEventListener('DOMContentLoaded', initializeServices);
+
+// ==================== REQUESTS MODAL ====================
+let currentRequestServiceId = null;
+let currentRequests = [];
+let currentSelectedRequest = null;
+
+async function openRequestsModal(serviceId, serviceName) {
+    currentRequestServiceId = serviceId;
+    document.getElementById('requestsModalServiceName').textContent = serviceName + ' - Requests';
+    
+    // Get service icon/color
+    const card = document.querySelector(`[data-service="${serviceId}"]`);
+    const icon = card ? card.querySelector('.service-icon').textContent.trim() : '📡';
+    document.getElementById('requestsModalIcon').textContent = icon;
+    
+    // Load requests
+    try {
+        const result = await apiCall(`/api/service/${serviceId}/requests`);
+        if (result && result.success) {
+            currentRequests = result.requests || [];
+            renderRequestsSidebar();
+        } else {
+            currentRequests = [];
+        }
+    } catch (e) {
+        console.error('Error loading requests:', e);
+        currentRequests = [];
+    }
+    
+    // Reset state
+    document.getElementById('requestsEmptyState').style.display = 'block';
+    document.getElementById('requestsForm').style.display = 'none';
+    document.getElementById('reqResponseSection').style.display = 'none';
+    currentSelectedRequest = null;
+    
+    // Show modal
+    document.getElementById('requestsModalOverlay').classList.add('active');
+    document.body.style.overflow = 'hidden';
+}
+
+function closeRequestsModal(event) {
+    if (event && event.target !== document.getElementById('requestsModalOverlay')) return;
+    document.getElementById('requestsModalOverlay').classList.remove('active');
+    document.body.style.overflow = '';
+}
+
+function renderRequestsSidebar() {
+    const sidebar = document.getElementById('requestsSidebar');
+    if (currentRequests.length === 0) {
+        sidebar.innerHTML = '<p style="padding:1rem;color:var(--text-muted);">Keine Requests definiert</p>';
+        return;
+    }
+    
+    sidebar.innerHTML = currentRequests.map((req, idx) => {
+        const methodClass = (req.method || 'GET').toLowerCase();
+        return `
+            <button class="request-sidebar-item" data-idx="${idx}" onclick="selectRequest(${idx})">
+                <span class="req-method req-method-${methodClass}">${req.method || 'GET'}</span>
+                <div class="req-sidebar-info">
+                    <span class="req-sidebar-name">${escapeHtml(req.name)}</span>
+                    <small class="req-sidebar-path">${escapeHtml(req.path || '/')}</small>
+                </div>
+            </button>
+        `;
+    }).join('');
+}
+
+function selectRequest(idx) {
+    const req = currentRequests[idx];
+    if (!req) return;
+    currentSelectedRequest = idx;
+    
+    // Highlight in sidebar
+    document.querySelectorAll('.request-sidebar-item').forEach(el => el.classList.remove('active'));
+    const activeBtn = document.querySelector(`.request-sidebar-item[data-idx="${idx}"]`);
+    if (activeBtn) activeBtn.classList.add('active');
+    
+    // Show form
+    document.getElementById('requestsEmptyState').style.display = 'none';
+    document.getElementById('requestsForm').style.display = 'block';
+    document.getElementById('reqResponseSection').style.display = 'none';
+    
+    // Fill form
+    const method = (req.method || 'GET').toUpperCase();
+    const methodBadge = document.getElementById('reqMethodBadge');
+    methodBadge.textContent = method;
+    methodBadge.className = `request-method-badge req-method-${method.toLowerCase()}`;
+    
+    document.getElementById('reqPathDisplay').textContent = req.path || '/';
+    document.getElementById('reqPathInput').value = req.path || '/';
+    document.getElementById('reqDescription').textContent = req.description || '';
+    
+    // Body
+    const bodyGroup = document.getElementById('reqBodyGroup');
+    if (['POST', 'PUT', 'PATCH'].includes(method) && req.body !== undefined) {
+        bodyGroup.style.display = 'block';
+        document.getElementById('reqBodyInput').value = JSON.stringify(req.body, null, 2);
+    } else if (['POST', 'PUT', 'PATCH'].includes(method)) {
+        bodyGroup.style.display = 'block';
+        document.getElementById('reqBodyInput').value = '{}';
+    } else {
+        bodyGroup.style.display = 'none';
+    }
+}
+
+async function sendCurrentRequest() {
+    if (currentSelectedRequest === null || !currentRequestServiceId) return;
+    
+    const req = currentRequests[currentSelectedRequest];
+    const method = (req.method || 'GET').toUpperCase();
+    const path = document.getElementById('reqPathInput').value || req.path || '/';
+    
+    let body = null;
+    if (['POST', 'PUT', 'PATCH'].includes(method)) {
+        const bodyText = document.getElementById('reqBodyInput').value.trim();
+        if (bodyText) {
+            try {
+                body = JSON.parse(bodyText);
+            } catch (e) {
+                showNotification('❌ Ungültiges JSON im Body!', 'error');
+                return;
+            }
+        }
+    }
+    
+    // Disable send button
+    const sendBtn = document.getElementById('reqSendBtn');
+    sendBtn.disabled = true;
+    sendBtn.textContent = '⏳ Sende...';
+    
+    try {
+        const result = await apiCall('/api/service/' + currentRequestServiceId + '/proxy', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ method, path, body })
+        });
+        
+        // Show response
+        document.getElementById('reqResponseSection').style.display = 'block';
+        const statusCode = document.getElementById('reqStatusCode');
+        const responseBody = document.getElementById('reqResponseBody');
+        
+        if (result.success) {
+            statusCode.textContent = `✅ ${result.status_code || 200}`;
+            statusCode.className = 'request-status-code status-success';
+        } else {
+            statusCode.textContent = `❌ ${result.status_code || 'Error'}`;
+            statusCode.className = 'request-status-code status-error';
+        }
+        
+        // Format response
+        let responseText;
+        if (result.is_json && result.response) {
+            responseText = JSON.stringify(result.response, null, 2);
+        } else if (result.response) {
+            // Try to pretty-print if it looks like JSON
+            try {
+                const parsed = JSON.parse(result.response);
+                responseText = JSON.stringify(parsed, null, 2);
+            } catch {
+                responseText = String(result.response);
+            }
+        } else if (result.error) {
+            responseText = result.error;
+        } else {
+            responseText = 'Keine Response';
+        }
+        
+        responseBody.textContent = responseText;
+        
+        // Scroll to response
+        document.getElementById('reqResponseSection').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        
+    } catch (e) {
+        document.getElementById('reqResponseSection').style.display = 'block';
+        document.getElementById('reqStatusCode').textContent = '❌ Fehler';
+        document.getElementById('reqStatusCode').className = 'request-status-code status-error';
+        document.getElementById('reqResponseBody').textContent = e.message || 'Unbekannter Fehler';
+    } finally {
+        sendBtn.disabled = false;
+        sendBtn.textContent = '🚀 Senden';
+    }
+}
+
+// Close modal with ESC
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+        const overlay = document.getElementById('requestsModalOverlay');
+        if (overlay && overlay.classList.contains('active')) {
+            closeRequestsModal();
+        }
+    }
+});
 </script>
 {% endblock %}

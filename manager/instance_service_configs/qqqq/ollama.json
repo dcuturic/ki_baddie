@@ -1,7 +1,0 @@
-{
-  "name": "Ollama",
-  "path": "../start-ollama.ps1",
-  "type": "powershell",
-  "icon": "🤖",
-  "color": "#00d4aa"
-}

@@ -109,6 +109,20 @@ var SIMPLE_FIELDS = {
         { path: 'osc.enabled', label: 'OSC aktiviert', type: 'bool' },
         { path: 'osc.port', label: 'OSC Port', type: 'number' },
     ],
+    web_avatar: [
+        { path: 'server.port', label: 'Server Port', type: 'number', hint: 'HTTP-Port des Web Avatar (Standard: 5006)' },
+        { path: 'server.host', label: 'Host', type: 'text' },
+        { path: 'vrm.model_path', label: 'VRM Modell', type: 'text', hint: 'Pfad zur .vrm Datei (relativ zum Service-Ordner)' },
+        { path: 'camera.fov', label: '📷 FOV', type: 'number', hint: 'Sichtfeld der Kamera in Grad (Standard: 28)' },
+        { path: 'camera.position.0', label: '📷 Position X', type: 'number_float', hint: 'Kamera X-Position' },
+        { path: 'camera.position.1', label: '📷 Position Y', type: 'number_float', hint: 'Kamera Y (Höhe)' },
+        { path: 'camera.position.2', label: '📷 Position Z', type: 'number_float', hint: 'Kamera Z (Entfernung)' },
+        { path: 'camera.target.0', label: '🎯 Ziel X', type: 'number_float', hint: 'Blickpunkt X' },
+        { path: 'camera.target.1', label: '🎯 Ziel Y', type: 'number_float', hint: 'Blickpunkt Y (Höhe)' },
+        { path: 'camera.target.2', label: '🎯 Ziel Z', type: 'number_float', hint: 'Blickpunkt Z' },
+        { path: 'osc.enabled', label: 'OSC Empfang', type: 'bool', hint: 'OSC-Daten von VSeeFace empfangen' },
+        { path: 'osc.listen_port', label: 'OSC Port', type: 'number', hint: 'OSC Listen Port' },
+    ],
 };
 
 var SIMPLE_FIELDS_DEFAULT = [
@@ -125,10 +139,16 @@ function setNestedValue(obj, path, value) {
     const keys = path.split('.');
     let cur = obj;
     for (let i = 0; i < keys.length - 1; i++) {
-        if (cur[keys[i]] === undefined || typeof cur[keys[i]] !== 'object') cur[keys[i]] = {};
-        cur = cur[keys[i]];
+        const k = keys[i];
+        const nextKey = keys[i + 1];
+        if (cur[k] === undefined || typeof cur[k] !== 'object') {
+            // Create array if next key is numeric, else object
+            cur[k] = /^\d+$/.test(nextKey) ? [] : {};
+        }
+        cur = cur[k];
     }
-    cur[keys[keys.length - 1]] = value;
+    const lastKey = keys[keys.length - 1];
+    cur[/^\d+$/.test(lastKey) ? parseInt(lastKey) : lastKey] = value;
 }
 
 /**
@@ -200,6 +220,14 @@ function buildSimpleFieldsHtml(serviceId, cfg, options) {
                     <input type="number" id="${fieldId}" value="${val ?? ''}" class="form-input" style="width:120px;"
                            onchange="${onChangeFn}('${serviceId}','${field.path}',Number(this.value),'number')">
                     ${hintHtml} ${portConflictHtml}
+                </div>`;
+        } else if (field.type === 'number_float') {
+            fieldsHtml += `
+                <div style="display:flex;align-items:center;gap:0.7rem;padding:0.35rem 0;flex-wrap:wrap;">
+                    <label for="${fieldId}" style="min-width:120px;margin:0;">${field.label}</label>
+                    <input type="number" step="0.01" id="${fieldId}" value="${val ?? ''}" class="form-input" style="width:120px;"
+                           onchange="${onChangeFn}('${serviceId}','${field.path}',parseFloat(this.value),'number')">
+                    ${hintHtml}
                 </div>`;
         } else if (field.type === 'audio_mode') {
             const currentMode = getAudioMode(serviceId);
