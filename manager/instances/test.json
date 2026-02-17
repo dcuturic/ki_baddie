@@ -29,6 +29,10 @@
     "web_avatar": {
       "enabled": true,
       "auto_start": false
+    },
+    "voice_chat": {
+      "enabled": true,
+      "auto_start": false
     }
   },
   "config_overrides": {}

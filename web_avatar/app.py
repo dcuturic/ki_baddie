@@ -58,8 +58,15 @@ OSC_FORWARD_HOST = osc_cfg.get("forward_host", "127.0.0.1")
 OSC_FORWARD_PORT = osc_cfg.get("forward_port", 39540)
 
 vrm_cfg = CONFIG.get("vrm", {})
-VRM_MODEL_PATH = "models/dilara.vrm"
-MODEL_FORMAT = "glb" if VRM_MODEL_PATH.lower().endswith(".glb") else "vrm"
+VRM_MODEL_PATH = vrm_cfg.get("model_path", "models/dilara.vrm")
+
+_ext = os.path.splitext(VRM_MODEL_PATH)[1].lower()
+if _ext == ".glb":
+    MODEL_FORMAT = "glb"
+elif _ext == ".fbx":
+    MODEL_FORMAT = "fbx"
+else:
+    MODEL_FORMAT = "vrm"
 
 cam_cfg = CONFIG.get("camera", {})
 CAM_POSITION = cam_cfg.get("position", [0, 1.35, 0.9])
@@ -276,12 +283,15 @@ def serve_vrm():
         return jsonify({
             "ok": False,
             "error": f"Model-Datei nicht gefunden: {VRM_MODEL_PATH}",
-            "hint": "Lege deine .vrm oder .glb Datei in web_avatar/models/ ab"
+            "hint": "Lege deine .vrm, .glb oder .fbx Datei in web_avatar/models/ ab"
         }), 404
     ext = os.path.splitext(VRM_MODEL_PATH)[1].lower()
     if ext == ".glb":
         mime = "model/gltf-binary"
         dl_name = "model.glb"
+    elif ext == ".fbx":
+        mime = "application/octet-stream"
+        dl_name = "model.fbx"
     else:
         mime = "application/octet-stream"
         dl_name = "model.vrm"
@@ -455,7 +465,7 @@ if __name__ == "__main__":
 
     if not os.path.exists(VRM_MODEL_PATH):
         print(f"\n  [!] Model-Datei fehlt: {VRM_MODEL_PATH}")
-        print(f"  [!] Lege deine .vrm oder .glb Datei dort ab und starte neu.\n")
+        print(f"  [!] Lege deine .vrm, .glb oder .fbx Datei dort ab und starte neu.\n")
 
     # Start OSC listener
     if OSC_ENABLED:

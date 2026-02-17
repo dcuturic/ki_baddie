@@ -452,6 +452,72 @@
           }
         }
       ]
+    },
+    "voice_chat": {
+      "name": "Voice Chat",
+      "path": "../voice_chat",
+      "script": "app.py",
+      "python_executable": "./.venv/Scripts/python.exe",
+      "type": "python",
+      "icon": "🎤",
+      "color": "#f43f5e",
+      "requests": [
+        {
+          "name": "Health Check",
+          "description": "Voice Chat Status und Stats",
+          "method": "GET",
+          "path": "/health"
+        },
+        {
+          "name": "Listening starten",
+          "description": "Mikrofon-Listener aktivieren",
+          "method": "POST",
+          "path": "/listen/start"
+        },
+        {
+          "name": "Listening stoppen",
+          "description": "Mikrofon-Listener deaktivieren",
+          "method": "POST",
+          "path": "/listen/stop"
+        },
+        {
+          "name": "Listener Status",
+          "description": "Aktueller Status und Statistiken",
+          "method": "GET",
+          "path": "/listen/status"
+        },
+        {
+          "name": "Audio Geräte",
+          "description": "Verfügbare Mikrofone auflisten",
+          "method": "GET",
+          "path": "/devices"
+        },
+        {
+          "name": "Text senden (Test)",
+          "description": "Manuell Text durch die Pipeline schicken",
+          "method": "POST",
+          "path": "/say",
+          "body": {
+            "text": "Hey, wie geht es dir heute?"
+          }
+        },
+        {
+          "name": "Direkt TTS",
+          "description": "Text direkt vorlesen ohne Chat",
+          "method": "POST",
+          "path": "/tts",
+          "body": {
+            "text": "Das ist ein Test!",
+            "emotion": "neutral"
+          }
+        },
+        {
+          "name": "Logs",
+          "description": "Letzte Log-Einträge anzeigen",
+          "method": "GET",
+          "path": "/logs"
+        }
+      ]
     }
   },
   "default_instance": "default"
