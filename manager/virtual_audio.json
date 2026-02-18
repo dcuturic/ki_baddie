@@ -1,14 +1,14 @@
 {
   "assignments": [
     {
-      "slot_name": "ki_audio_experiment 4 test",
-      "index": 4,
-      "instance": "test",
+      "slot_name": "ki_audio_experiment 5 stream",
+      "index": 5,
+      "instance": "stream",
       "cable_id": "vb-cable",
       "cable_label": "VB-Audio Virtual Cable",
       "read_from": "CABLE Output (VB-Audio Virtual Cable)",
       "write_to": "CABLE Input (VB-Audio Virtual Cable)"
     }
   ],
-  "counter": 5
+  "counter": 6
 }

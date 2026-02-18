@@ -518,6 +518,156 @@
           "path": "/logs"
         }
       ]
+    },
+    "blend_to_vrm": {
+      "name": "Blend → VRM",
+      "path": "../blend_to_vrm",
+      "script": "app.py",
+      "python_executable": "./.venv/Scripts/python.exe",
+      "type": "python",
+      "icon": "🎭",
+      "color": "#f59e0b",
+      "requests": [
+        {
+          "name": "Health Check",
+          "description": "Service-Status prüfen",
+          "method": "GET",
+          "path": "/health"
+        },
+        {
+          "name": "blend/ scannen",
+          "description": "blend/ Ordner nach neuen ZIPs scannen und konvertieren",
+          "method": "POST",
+          "path": "/scan"
+        },
+        {
+          "name": "Lokale Datei konvertieren",
+          "description": "Blend-Datei per lokalem Pfad konvertieren",
+          "method": "POST",
+          "path": "/convert/file",
+          "body": {
+            "path": "C:\\pfad\\zur\\datei.blend"
+          }
+        },
+        {
+          "name": "Jobs auflisten",
+          "description": "Alle Konvertierungs-Jobs anzeigen",
+          "method": "GET",
+          "path": "/jobs"
+        },
+        {
+          "name": "blend/ Dateien",
+          "description": "Alle ZIP-Dateien im blend/ Ordner auflisten",
+          "method": "GET",
+          "path": "/blend"
+        },
+        {
+          "name": "VRM Output-Dateien",
+          "description": "Alle fertigen VRM-Dateien im vrm/ Ordner",
+          "method": "GET",
+          "path": "/output"
+        }
+      ]
+    },
+    "fbx_to_vrm": {
+      "name": "FBX → VRM",
+      "path": "../fbx_to_vrm",
+      "script": "app.py",
+      "python_executable": "./.venv/Scripts/python.exe",
+      "type": "python",
+      "icon": "📦",
+      "color": "#ec4899",
+      "requests": [
+        {
+          "name": "Health Check",
+          "description": "Service-Status prüfen",
+          "method": "GET",
+          "path": "/health"
+        },
+        {
+          "name": "fbx/ scannen",
+          "description": "fbx/ Ordner nach neuen FBX/ZIP-Dateien scannen",
+          "method": "POST",
+          "path": "/scan"
+        },
+        {
+          "name": "Lokale Datei konvertieren",
+          "description": "FBX-Datei per lokalem Pfad konvertieren",
+          "method": "POST",
+          "path": "/convert/file",
+          "body": {
+            "path": "C:\\pfad\\zur\\datei.fbx"
+          }
+        },
+        {
+          "name": "Jobs auflisten",
+          "description": "Alle Konvertierungs-Jobs anzeigen",
+          "method": "GET",
+          "path": "/jobs"
+        },
+        {
+          "name": "fbx/ Dateien",
+          "description": "Alle FBX/ZIP-Dateien im fbx/ Ordner auflisten",
+          "method": "GET",
+          "path": "/fbx"
+        },
+        {
+          "name": "VRM Output-Dateien",
+          "description": "Alle fertigen VRM-Dateien im vrm/ Ordner",
+          "method": "GET",
+          "path": "/output"
+        }
+      ]
+    },
+    "glb_to_vrm": {
+      "name": "GLB → VRM",
+      "path": "../glb_to_vrm",
+      "script": "app.py",
+      "python_executable": "./.venv/Scripts/python.exe",
+      "type": "python",
+      "icon": "🎮",
+      "color": "#06b6d4",
+      "requests": [
+        {
+          "name": "Health Check",
+          "description": "Service-Status prüfen",
+          "method": "GET",
+          "path": "/health"
+        },
+        {
+          "name": "glb/ scannen",
+          "description": "glb/ Ordner nach GLB/glTF/ZIP-Dateien scannen",
+          "method": "POST",
+          "path": "/scan"
+        },
+        {
+          "name": "Lokale Datei konvertieren",
+          "description": "GLB/glTF-Datei per lokalem Pfad konvertieren",
+          "method": "POST",
+          "path": "/convert/file",
+          "body": {
+            "path": "C:\\pfad\\zur\\datei.glb"
+          }
+        },
+        {
+          "name": "Jobs auflisten",
+          "description": "Alle Konvertierungs-Jobs anzeigen",
+          "method": "GET",
+          "path": "/jobs"
+        },
+        {
+          "name": "glb/ Dateien",
+          "description": "Alle GLB/glTF/ZIP-Dateien im glb/ Ordner auflisten",
+          "method": "GET",
+          "path": "/glb"
+        },
+        {
+          "name": "VRM Output-Dateien",
+          "description": "Alle fertigen VRM-Dateien im vrm/ Ordner",
+          "method": "GET",
+          "path": "/output"
+        }
+      ]
     }
   },
   "default_instance": "default"

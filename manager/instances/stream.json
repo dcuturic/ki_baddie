@@ -1,7 +1,19 @@
 {
-  "name": "test",
-  "description": "test",
+  "name": "stream",
+  "description": "stream",
   "services": {
+    "blend_to_vrm": {
+      "enabled": true,
+      "auto_start": false
+    },
+    "fbx_to_vrm": {
+      "enabled": true,
+      "auto_start": false
+    },
+    "glb_to_vrm": {
+      "enabled": true,
+      "auto_start": false
+    },
     "ki_chat": {
       "enabled": true,
       "auto_start": false
@@ -18,6 +30,10 @@
       "enabled": true,
       "auto_start": false
     },
+    "voice_chat": {
+      "enabled": true,
+      "auto_start": false
+    },
     "vroid_emotion": {
       "enabled": true,
       "auto_start": false
@@ -27,10 +43,6 @@
       "auto_start": false
     },
     "web_avatar": {
-      "enabled": true,
-      "auto_start": false
-    },
-    "voice_chat": {
       "enabled": true,
       "auto_start": false
     }

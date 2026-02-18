@@ -1,22 +1,21 @@
 """
-GLB to VRM Converter
+FBX to VRM Converter
 ======================
-Flask-Service zum Konvertieren von GLB/glTF-Dateien zu VRM.
+Flask-Service zum Konvertieren von FBX-Dateien zu VRM.
 
 Features:
-  - ./glb/ Ordner: GLB/glTF Dateien oder ZIPs ablegen -> manuelle Konvertierung
-  - Upload via Web-UI oder API (ZIP, .glb, .gltf)
+  - ./fbx/ Ordner: ZIP-Dateien mit .fbx + Texturen ablegen -> manuelle Konvertierung
+  - Upload via Web-UI oder API (ZIP oder .fbx)
   - Blender headless Konvertierung im Hintergrund
   - Automatisches VRM Humanoid Bone-Mapping
   - Shape Keys -> VRM Expressions (Gesichtsemotionen)
-  - Viseme Lipsync (A/I/U/E/O + erweiterte Viseme)
-  - Eye-Tracking (Bone-based + BlendShape-based)
+  - Bone/Armature-Setup fuer Animationen
   - Fertige VRM-Dateien in ./vrm/
 
 Nutzung:
   1. python app.py
-  2. GLB/glTF Dateien in ./glb/ legen
-  3. Browser: http://localhost:5013 -> konvertieren
+  2. ZIP-Dateien (mit .fbx + Texturen) in ./fbx/ legen
+  3. Browser: http://localhost:5012 -> manuell konvertieren
 """
 
 import os
@@ -53,17 +52,15 @@ def load_config() -> Dict:
 CONFIG = load_config()
 
 SERVER_HOST = CONFIG.get("host", "0.0.0.0")
-SERVER_PORT = CONFIG.get("port", 5013)
+SERVER_PORT = CONFIG.get("port", 5012)
 BLENDER_PATH = CONFIG.get("blender_path", r"C:\Program Files\Blender Foundation\Blender 4.2\blender.exe")
-GLB_DIR = os.path.join(SCRIPT_DIR, "glb")         # Input: GLB/glTF/ZIP Dateien
-VRM_DIR = os.path.join(SCRIPT_DIR, "vrm")          # Output: fertige .vrm Dateien
-UPLOAD_DIR = os.path.join(SCRIPT_DIR, "uploads")    # Temp fuer Web-Uploads
-WORK_DIR = os.path.join(SCRIPT_DIR, "_work")        # Temp zum Entpacken
+FBX_DIR = os.path.join(SCRIPT_DIR, "fbx")        # Input: ZIPs mit .fbx + Texturen oder .fbx Dateien
+VRM_DIR = os.path.join(SCRIPT_DIR, "vrm")         # Output: fertige .vrm Dateien
+UPLOAD_DIR = os.path.join(SCRIPT_DIR, "uploads")   # Temp fuer Web-Uploads
+WORK_DIR = os.path.join(SCRIPT_DIR, "_work")       # Temp zum Entpacken
 BLENDER_SCRIPT = os.path.join(SCRIPT_DIR, "converter.py")
 
-ACCEPTED_EXTENSIONS = {".glb", ".gltf", ".zip"}
-
-for _d in [GLB_DIR, VRM_DIR, UPLOAD_DIR, WORK_DIR]:
+for _d in [FBX_DIR, VRM_DIR, UPLOAD_DIR, WORK_DIR]:
     os.makedirs(_d, exist_ok=True)
 
 # ======================= JOB TRACKING =======================
@@ -109,7 +106,10 @@ app.config["MAX_CONTENT_LENGTH"] = 500 * 1024 * 1024  # 500 MB max
 # ======================= CONVERSION =======================
 
 def extract_zip(zip_path: str, job_id: str) -> str:
-    """ZIP entpacken -> GLB/glTF Datei + Texturen."""
+    """
+    ZIP entpacken -> .fbx Datei + Texturen in Work-Verzeichnis.
+    Gibt den Pfad zur .fbx Datei zurueck.
+    """
     extract_dir = os.path.join(WORK_DIR, job_id)
     os.makedirs(extract_dir, exist_ok=True)
 
@@ -121,18 +121,18 @@ def extract_zip(zip_path: str, job_id: str) -> str:
                 continue
             zf.extract(info, extract_dir)
 
-    # GLB/glTF Datei finden
-    glb_file = None
+    # .fbx Datei finden (auch in Unterordnern)
+    fbx_file = None
     for root, dirs, files in os.walk(extract_dir):
         for f in files:
-            if f.lower().endswith((".glb", ".gltf")) and not f.startswith("."):
-                glb_file = os.path.join(root, f)
+            if f.lower().endswith(".fbx") and not f.startswith("."):
+                fbx_file = os.path.join(root, f)
                 break
-        if glb_file:
+        if fbx_file:
             break
 
-    if not glb_file:
-        raise RuntimeError("Keine .glb oder .gltf Datei in der ZIP gefunden!")
+    if not fbx_file:
+        raise RuntimeError("Keine .fbx Datei in der ZIP gefunden!")
 
     # Zaehle Texturen
     tex_count = 0
@@ -142,13 +142,13 @@ def extract_zip(zip_path: str, job_id: str) -> str:
             if os.path.splitext(f)[1].lower() in tex_exts:
                 tex_count += 1
 
-    add_job_log(job_id, f"GLB/glTF-Datei: {os.path.basename(glb_file)}")
+    add_job_log(job_id, f"FBX-Datei: {os.path.basename(fbx_file)}")
     add_job_log(job_id, f"Texturen gefunden: {tex_count}")
 
-    return glb_file
+    return fbx_file
 
 
-def run_conversion(job_id: str, glb_path: str, output_dir: str = None, cleanup_dir: str = None, options: dict = None):
+def run_conversion(job_id: str, fbx_path: str, output_dir: str = None, cleanup_dir: str = None, options: dict = None):
     """Startet Blender headless und fuehrt das Converter-Script aus."""
     if output_dir is None:
         output_dir = VRM_DIR
@@ -158,7 +158,7 @@ def run_conversion(job_id: str, glb_path: str, output_dir: str = None, cleanup_d
         update_job(job_id, status="converting", progress=10)
         add_job_log(job_id, "Starte Blender im Headless-Modus...")
 
-        output_name = os.path.splitext(os.path.basename(glb_path))[0] + ".vrm"
+        output_name = os.path.splitext(os.path.basename(fbx_path))[0] + ".vrm"
         output_path = os.path.join(output_dir, output_name)
 
         if not os.path.exists(BLENDER_PATH):
@@ -167,6 +167,7 @@ def run_conversion(job_id: str, glb_path: str, output_dir: str = None, cleanup_d
                 f"Bitte blender_path in config.json setzen."
             )
 
+        # Options als JSON an converter.py uebergeben
         options_json = json.dumps(options)
 
         cmd = [
@@ -175,7 +176,7 @@ def run_conversion(job_id: str, glb_path: str, output_dir: str = None, cleanup_d
             "--factory-startup",
             "--python", BLENDER_SCRIPT,
             "--",
-            glb_path,
+            fbx_path,
             output_path,
             job_id,
             options_json,
@@ -183,10 +184,8 @@ def run_conversion(job_id: str, glb_path: str, output_dir: str = None, cleanup_d
 
         vrm_ver = options.get('vrm_version', '0.x')
         add_job_log(job_id, f"VRM-Version: {vrm_ver}")
-        add_job_log(job_id, f"Eye-Tracking: {'ja' if options.get('eye_tracking', True) else 'nein'}")
-        add_job_log(job_id, f"Lipsync: {'ja' if options.get('lipsync', True) else 'nein'}")
 
-        add_job_log(job_id, f"GLB-Datei: {os.path.basename(glb_path)}")
+        add_job_log(job_id, f"FBX-Datei: {os.path.basename(fbx_path)}")
         add_job_log(job_id, f"Ziel: {output_name}")
         update_job(job_id, progress=20)
 
@@ -205,6 +204,7 @@ def run_conversion(job_id: str, glb_path: str, output_dir: str = None, cleanup_d
             if not line:
                 continue
 
+            # Parse progress markers from converter script
             if line.startswith("[PROGRESS:"):
                 try:
                     pct = int(line.split(":")[1].split("]")[0])
@@ -233,6 +233,7 @@ def run_conversion(job_id: str, glb_path: str, output_dir: str = None, cleanup_d
         add_job_log(job_id, f"FEHLER: {e}")
         update_job(job_id, status="error", error=str(e))
     finally:
+        # Clean up work directory (entpackte ZIP-Dateien)
         if cleanup_dir and os.path.exists(cleanup_dir):
             try:
                 shutil.rmtree(cleanup_dir, ignore_errors=True)
@@ -245,16 +246,16 @@ def run_conversion(job_id: str, glb_path: str, output_dir: str = None, cleanup_d
 @app.route("/health")
 def health():
     blender_ok = os.path.exists(BLENDER_PATH)
-    glb_files = []
-    if os.path.exists(GLB_DIR):
-        glb_files = [f for f in os.listdir(GLB_DIR) if os.path.splitext(f)[1].lower() in ACCEPTED_EXTENSIONS]
+    fbx_files = []
+    if os.path.exists(FBX_DIR):
+        fbx_files = [f for f in os.listdir(FBX_DIR) if f.lower().endswith((".zip", ".fbx"))]
     vrm_files = [f for f in os.listdir(VRM_DIR) if f.lower().endswith(".vrm")] if os.path.exists(VRM_DIR) else []
     return jsonify({
         "status": "ok",
-        "service": "glb_to_vrm",
+        "service": "fbx_to_vrm",
         "blender_found": blender_ok,
         "blender_path": BLENDER_PATH,
-        "glb_folder": len(glb_files),
+        "fbx_folder": len(fbx_files),
         "vrm_folder": len(vrm_files),
     })
 
@@ -266,7 +267,7 @@ def index():
 
 @app.route("/convert", methods=["POST"])
 def convert():
-    """Upload .glb, .gltf oder .zip Datei und starte Konvertierung."""
+    """Upload .fbx oder .zip Datei und starte Konvertierung."""
     if "file" not in request.files:
         return jsonify({"error": "Keine Datei hochgeladen"}), 400
 
@@ -274,17 +275,16 @@ def convert():
     if not file.filename:
         return jsonify({"error": "Kein Dateiname"}), 400
 
-    ext = os.path.splitext(file.filename)[1].lower()
-    if ext not in ACCEPTED_EXTENSIONS:
-        return jsonify({"error": "Nur .glb, .gltf oder .zip Dateien erlaubt"}), 400
+    fname_lower = file.filename.lower()
+    if not fname_lower.endswith(".fbx") and not fname_lower.endswith(".zip"):
+        return jsonify({"error": "Nur .fbx oder .zip Dateien erlaubt"}), 400
 
+    # Optionen aus Formular lesen
     options = {
         "vrm_version": request.form.get("vrm_version", "0.x"),
         "expression_mapping": request.form.get("expression_mapping", "auto"),
         "normalize": request.form.get("normalize", "true") == "true",
         "auto_weight": request.form.get("auto_weight", "true") == "true",
-        "eye_tracking": request.form.get("eye_tracking", "true") == "true",
-        "lipsync": request.form.get("lipsync", "true") == "true",
     }
 
     safe_name = file.filename.replace(" ", "_")
@@ -294,13 +294,13 @@ def convert():
 
     add_job_log(job_id, f"Datei empfangen: {safe_name} ({os.path.getsize(upload_path) / 1024 / 1024:.1f} MB)")
 
-    if ext == ".zip":
+    if fname_lower.endswith(".zip"):
         def convert_zip():
             cleanup_dir = None
             try:
-                glb_path = extract_zip(upload_path, job_id)
+                fbx_path = extract_zip(upload_path, job_id)
                 cleanup_dir = os.path.join(WORK_DIR, job_id)
-                run_conversion(job_id, glb_path, cleanup_dir=cleanup_dir, options=options)
+                run_conversion(job_id, fbx_path, cleanup_dir=cleanup_dir, options=options)
             except Exception as e:
                 add_job_log(job_id, f"FEHLER: {e}")
                 update_job(job_id, status="error", error=str(e))
@@ -319,26 +319,25 @@ def convert():
 
 @app.route("/convert/file", methods=["POST"])
 def convert_local_file():
-    """Konvertiere eine lokale GLB/glTF Datei (Pfad als JSON)."""
+    """Konvertiere eine lokale .fbx Datei (Pfad als JSON)."""
     data = request.get_json(silent=True) or {}
-    glb_path = data.get("path", "")
+    fbx_path = data.get("path", "")
 
-    if not glb_path or not os.path.exists(glb_path):
-        return jsonify({"error": f"Datei nicht gefunden: {glb_path}"}), 400
+    if not fbx_path or not os.path.exists(fbx_path):
+        return jsonify({"error": f"Datei nicht gefunden: {fbx_path}"}), 400
 
-    ext = os.path.splitext(glb_path)[1].lower()
-    if ext not in {".glb", ".gltf"}:
-        return jsonify({"error": "Nur .glb oder .gltf Dateien erlaubt"}), 400
+    if not fbx_path.lower().endswith(".fbx"):
+        return jsonify({"error": "Nur .fbx Dateien erlaubt"}), 400
 
-    options = data.get("options", {})
-    safe_name = os.path.basename(glb_path).replace(" ", "_")
+    # Copy file to uploads
+    safe_name = os.path.basename(fbx_path).replace(" ", "_")
     job_id = create_job(safe_name)
     upload_path = os.path.join(UPLOAD_DIR, f"{job_id}_{safe_name}")
-    shutil.copy2(glb_path, upload_path)
+    shutil.copy2(fbx_path, upload_path)
 
-    add_job_log(job_id, f"Lokale Datei: {glb_path}")
+    add_job_log(job_id, f"Lokale Datei: {fbx_path}")
 
-    thread = threading.Thread(target=run_conversion, args=(job_id, upload_path), kwargs={"options": options}, daemon=True)
+    thread = threading.Thread(target=run_conversion, args=(job_id, upload_path), daemon=True)
     thread.start()
 
     return jsonify({"job_id": job_id, "status": "queued"})
@@ -346,12 +345,14 @@ def convert_local_file():
 
 @app.route("/jobs")
 def list_jobs():
+    """Liste aller Konvertierungs-Jobs."""
     with jobs_lock:
         return jsonify(list(jobs.values()))
 
 
 @app.route("/jobs/<job_id>")
 def get_job(job_id: str):
+    """Status eines Jobs abfragen."""
     with jobs_lock:
         job = jobs.get(job_id)
     if not job:
@@ -361,6 +362,7 @@ def get_job(job_id: str):
 
 @app.route("/jobs/<job_id>/download")
 def download_job(job_id: str):
+    """Fertige VRM-Datei herunterladen."""
     with jobs_lock:
         job = jobs.get(job_id)
     if not job:
@@ -376,6 +378,7 @@ def download_job(job_id: str):
 
 @app.route("/output")
 def list_output():
+    """Liste aller VRM-Dateien im vrm/ Ordner."""
     files = []
     for f in os.listdir(VRM_DIR):
         if f.lower().endswith(".vrm"):
@@ -390,18 +393,20 @@ def list_output():
 
 @app.route("/output/<filename>/download")
 def download_output(filename: str):
+    """VRM-Datei aus dem vrm/ Ordner herunterladen."""
     path = os.path.join(VRM_DIR, filename)
     if not os.path.exists(path):
         return jsonify({"error": "Datei nicht gefunden"}), 404
     return send_file(path, as_attachment=True)
 
 
-@app.route("/glb")
-def list_glb():
+@app.route("/fbx")
+def list_fbx():
+    """Liste aller Dateien im fbx/ Ordner."""
     files = []
-    for f in os.listdir(GLB_DIR):
-        if os.path.splitext(f)[1].lower() in ACCEPTED_EXTENSIONS:
-            full = os.path.join(GLB_DIR, f)
+    for f in os.listdir(FBX_DIR):
+        if f.lower().endswith((".zip", ".fbx")):
+            full = os.path.join(FBX_DIR, f)
             vrm_name = os.path.splitext(f)[0] + ".vrm"
             vrm_exists = os.path.exists(os.path.join(VRM_DIR, vrm_name))
             files.append({
@@ -414,12 +419,13 @@ def list_glb():
 
 
 @app.route("/scan", methods=["POST"])
-def scan_glb_folder():
+def scan_fbx_folder():
+    """fbx/ Ordner scannen und Dateien auflisten (ohne zu konvertieren)."""
     files = []
-    if os.path.exists(GLB_DIR):
-        for f in os.listdir(GLB_DIR):
-            if os.path.splitext(f)[1].lower() in ACCEPTED_EXTENSIONS:
-                full = os.path.join(GLB_DIR, f)
+    if os.path.exists(FBX_DIR):
+        for f in os.listdir(FBX_DIR):
+            if f.lower().endswith((".zip", ".fbx")):
+                full = os.path.join(FBX_DIR, f)
                 vrm_name = os.path.splitext(f)[0] + ".vrm"
                 vrm_exists = os.path.exists(os.path.join(VRM_DIR, vrm_name))
                 files.append({
@@ -432,62 +438,64 @@ def scan_glb_folder():
 
 @app.route("/convert/folder", methods=["POST"])
 def convert_folder():
+    """Konvertiere ausgewaehlte oder alle Dateien aus fbx/ Ordner."""
     data = request.get_json(silent=True) or {}
     options = {
         "vrm_version": data.get("vrm_version", "0.x"),
         "expression_mapping": data.get("expression_mapping", "auto"),
         "normalize": data.get("normalize", True),
         "auto_weight": data.get("auto_weight", True),
-        "eye_tracking": data.get("eye_tracking", True),
-        "lipsync": data.get("lipsync", True),
     }
-    selected = data.get("files", None)
+    # Welche Dateien konvertieren? Alle oder nur bestimmte
+    selected = data.get("files", None)  # None = alle
     skip_existing = data.get("skip_existing", True)
 
-    if not os.path.exists(GLB_DIR):
-        return jsonify({"error": "glb/ Ordner nicht gefunden"}), 400
+    if not os.path.exists(FBX_DIR):
+        return jsonify({"error": "fbx/ Ordner nicht gefunden"}), 400
 
     started = 0
     skipped = 0
-    for fname in os.listdir(GLB_DIR):
-        ext = os.path.splitext(fname)[1].lower()
-        if ext not in ACCEPTED_EXTENSIONS:
+    for fname in os.listdir(FBX_DIR):
+        fname_lower = fname.lower()
+        if not fname_lower.endswith(".zip") and not fname_lower.endswith(".fbx"):
             continue
 
+        # Nur ausgewaehlte Dateien?
         if selected is not None and fname not in selected:
             continue
 
+        # VRM existiert schon?
         vrm_base = os.path.splitext(fname)[0]
         if skip_existing and os.path.exists(os.path.join(VRM_DIR, vrm_base + ".vrm")):
             skipped += 1
             continue
 
-        file_path = os.path.join(GLB_DIR, fname)
+        file_path = os.path.join(FBX_DIR, fname)
         safe_name = fname.replace(" ", "_")
         job_id = create_job(safe_name)
-        add_job_log(job_id, f"Aus glb/ Ordner: {fname}")
+        add_job_log(job_id, f"Aus fbx/ Ordner: {fname}")
 
-        if ext == ".zip":
+        if fname_lower.endswith(".zip"):
             def do_convert_zip(zp=file_path, jid=job_id, opts=options):
                 cleanup_dir = None
                 try:
-                    glb_file = extract_zip(zp, jid)
+                    fbx_file = extract_zip(zp, jid)
                     cleanup_dir = os.path.join(WORK_DIR, jid)
-                    run_conversion(jid, glb_file, cleanup_dir=cleanup_dir, options=opts)
+                    run_conversion(jid, fbx_file, cleanup_dir=cleanup_dir, options=opts)
                 except Exception as e:
                     add_job_log(jid, f"FEHLER: {e}")
                     update_job(jid, status="error", error=str(e))
 
             thread = threading.Thread(target=do_convert_zip, daemon=True)
         else:
-            def do_convert_glb(fp=file_path, jid=job_id, opts=options):
+            def do_convert_fbx(fp=file_path, jid=job_id, opts=options):
                 try:
                     run_conversion(jid, fp, options=opts)
                 except Exception as e:
                     add_job_log(jid, f"FEHLER: {e}")
                     update_job(jid, status="error", error=str(e))
 
-            thread = threading.Thread(target=do_convert_glb, daemon=True)
+            thread = threading.Thread(target=do_convert_fbx, daemon=True)
 
         thread.start()
         started += 1
@@ -503,14 +511,14 @@ WEB_UI = r"""
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>GLB &rarr; VRM Converter</title>
+<title>FBX &rarr; VRM Converter</title>
 <style>
   :root {
     --bg: #0f172a;
     --bg2: #1e293b;
     --bg3: #334155;
-    --accent: #06b6d4;
-    --accent-hover: #0891b2;
+    --accent: #ec4899;
+    --accent-hover: #db2777;
     --green: #10b981;
     --red: #ef4444;
     --yellow: #f59e0b;
@@ -527,6 +535,7 @@ WEB_UI = r"""
   h1 span { color:var(--accent); }
   .subtitle { color:var(--text2); margin-bottom:2rem; }
 
+  /* Tabs */
   .tabs { display:flex; gap:0; margin-bottom:0; border-bottom:2px solid var(--bg3); }
   .tab { padding:0.75rem 1.5rem; cursor:pointer; color:var(--text2); font-weight:600;
     border-bottom:2px solid transparent; margin-bottom:-2px; transition:all .2s; }
@@ -535,6 +544,7 @@ WEB_UI = r"""
   .tab-content { display:none; padding-top:1.5rem; }
   .tab-content.active { display:block; }
 
+  /* Options Panel */
   .options { background:var(--bg2); border-radius:var(--radius); padding:1.5rem; margin-bottom:1.5rem; }
   .options h3 { margin-bottom:1rem; font-size:1.1rem; }
   .option-row { display:flex; align-items:center; gap:1rem; margin-bottom:0.8rem; flex-wrap:wrap; }
@@ -545,19 +555,19 @@ WEB_UI = r"""
   }
   .checkbox-row { display:flex; align-items:center; gap:0.5rem; }
   .checkbox-row input[type=checkbox] { accent-color:var(--accent); width:18px; height:18px; }
-  .option-divider { border-top:1px solid var(--bg3); margin:1rem 0; padding-top:0.75rem; }
-  .option-divider h4 { font-size:0.95rem; color:var(--accent); margin-bottom:0.75rem; }
 
+  /* Upload Area */
   .upload-area {
     border:2px dashed var(--bg3); border-radius:var(--radius); padding:2.5rem;
     text-align:center; transition:all .3s; cursor:pointer; background:var(--bg2);
     margin-bottom:1.5rem;
   }
-  .upload-area:hover, .upload-area.dragover { border-color:var(--accent); background:rgba(6,182,212,0.1); }
+  .upload-area:hover, .upload-area.dragover { border-color:var(--accent); background:rgba(236,72,153,0.1); }
   .upload-area .icon { font-size:2.5rem; margin-bottom:0.75rem; }
   .upload-area p { color:var(--text2); }
   .upload-area input[type=file] { display:none; }
 
+  /* Folder Files List */
   .file-list { background:var(--bg2); border-radius:var(--radius); overflow:hidden; margin-bottom:1.5rem; }
   .file-item { display:flex; align-items:center; padding:0.75rem 1rem; border-bottom:1px solid var(--bg3);
     gap:0.75rem; }
@@ -572,6 +582,7 @@ WEB_UI = r"""
     font-weight:600; gap:0.75rem; }
   .file-list-empty { text-align:center; color:var(--text2); padding:2rem; }
 
+  /* Buttons */
   .btn { padding:0.6rem 1.2rem; border:none; border-radius:8px; cursor:pointer;
     font-weight:600; transition:all .2s; font-size:0.9rem; display:inline-flex; align-items:center; gap:0.5rem; }
   .btn-primary { background:var(--accent); color:#fff; }
@@ -585,6 +596,7 @@ WEB_UI = r"""
   .btn:disabled { opacity:0.5; cursor:not-allowed; }
   .btn-row { display:flex; gap:0.75rem; align-items:center; flex-wrap:wrap; margin-bottom:1.5rem; }
 
+  /* Jobs */
   .jobs-section h2 { margin-bottom:1rem; }
   .job-card {
     background:var(--bg2); border-radius:var(--radius); padding:1.25rem;
@@ -602,17 +614,10 @@ WEB_UI = r"""
   .job-status.error { background:rgba(239,68,68,0.2); color:var(--red); }
   .progress-bar { height:5px; background:var(--bg3); border-radius:3px; margin:0.5rem 0; overflow:hidden; }
   .progress-fill { height:100%; background:var(--accent); border-radius:3px; transition:width .5s; }
-  .job-log { max-height:200px; overflow-y:auto; font-family:'Cascadia Code',monospace; font-size:0.78rem;
+  .job-log { max-height:180px; overflow-y:auto; font-family:'Cascadia Code',monospace; font-size:0.78rem;
     background:var(--bg); border-radius:8px; padding:0.6rem; margin-top:0.5rem; color:var(--text2); }
   .job-log div { margin-bottom:2px; }
   .empty-state { text-align:center; color:var(--text2); padding:2rem; }
-
-  .feature-badges { display:flex; gap:0.5rem; flex-wrap:wrap; margin-bottom:1.5rem; }
-  .feature-badge { padding:0.3rem 0.7rem; border-radius:20px; font-size:0.8rem; font-weight:600; }
-  .feature-badge.skeleton { background:rgba(6,182,212,0.2); color:var(--accent); }
-  .feature-badge.lipsync { background:rgba(236,72,153,0.2); color:#ec4899; }
-  .feature-badge.eyes { background:rgba(139,92,246,0.2); color:#8b5cf6; }
-  .feature-badge.emotions { background:rgba(245,158,11,0.2); color:var(--yellow); }
 
   ::-webkit-scrollbar { width:6px; }
   ::-webkit-scrollbar-track { background:var(--bg); }
@@ -621,17 +626,10 @@ WEB_UI = r"""
 </head>
 <body>
 <div class="container">
-  <h1>&#127912; GLB <span>&rarr;</span> VRM</h1>
-  <p class="subtitle">Konvertiere GLB/glTF-Modelle zu VRM &mdash; mit Skeleton, Lipsync, Eye-Tracking &amp; Emotionen</p>
+  <h1>&#128230; FBX <span>&rarr;</span> VRM</h1>
+  <p class="subtitle">Konvertiere FBX-Modelle zu VRM mit Gesichtsausdruecken, Bones &amp; Animationen (VSeeFace kompatibel)</p>
 
-  <div class="feature-badges">
-    <span class="feature-badge skeleton">&#129471; Skeleton + Bone-Mapping</span>
-    <span class="feature-badge lipsync">&#128266; Lipsync (Viseme A/I/U/E/O)</span>
-    <span class="feature-badge eyes">&#128064; Eye-Tracking</span>
-    <span class="feature-badge emotions">&#128522; Emotionen &amp; Blink</span>
-  </div>
-
-  <!-- Options -->
+  <!-- Options (immer sichtbar oben) -->
   <div class="options">
     <h3>&#9881;&#65039; Konvertierungs-Optionen</h3>
     <div class="option-row">
@@ -656,23 +654,11 @@ WEB_UI = r"""
       <input type="checkbox" id="optAutoWeight" checked>
       <label for="optAutoWeight">Fehlende Bone-Weights automatisch generieren</label>
     </div>
-
-    <div class="option-divider">
-      <h4>&#128064; Eye-Tracking &amp; &#128266; Lipsync</h4>
-    </div>
-    <div class="option-row checkbox-row">
-      <input type="checkbox" id="optEyeTracking" checked>
-      <label for="optEyeTracking">Eye-Tracking aktivieren (Bone-based oder BlendShape LookAt)</label>
-    </div>
-    <div class="option-row checkbox-row">
-      <input type="checkbox" id="optLipsync" checked>
-      <label for="optLipsync">Lipsync / Viseme aktivieren (A/I/U/E/O + erweiterte Viseme)</label>
-    </div>
   </div>
 
   <!-- Tabs -->
   <div class="tabs">
-    <div class="tab active" onclick="switchTab('folder')">&#128194; glb/ Ordner</div>
+    <div class="tab active" onclick="switchTab('folder')">&#128194; fbx/ Ordner</div>
     <div class="tab" onclick="switchTab('upload')">&#128228; Datei hochladen</div>
   </div>
 
@@ -688,7 +674,7 @@ WEB_UI = r"""
       </label>
     </div>
     <div class="file-list" id="folderFileList">
-      <div class="file-list-empty">Klicke "Ordner aktualisieren" um glb/ zu scannen</div>
+      <div class="file-list-empty">Klicke "Ordner aktualisieren" um fbx/ zu scannen</div>
     </div>
   </div>
 
@@ -696,9 +682,9 @@ WEB_UI = r"""
   <div class="tab-content" id="tab-upload">
     <div class="upload-area" id="uploadArea" onclick="document.getElementById('fileInput').click()">
       <div class="icon">&#128193;</div>
-      <p><strong>.glb, .gltf oder .zip Datei hierhin ziehen</strong> oder klicken</p>
-      <p style="font-size:0.85rem; margin-top:0.5rem;">ZIP = .glb + Texturen &bull; Max. 500 MB</p>
-      <input type="file" id="fileInput" accept=".glb,.gltf,.zip">
+      <p><strong>.zip oder .fbx Datei hierhin ziehen</strong> oder klicken</p>
+      <p style="font-size:0.85rem; margin-top:0.5rem;">ZIP = .fbx + Texturen &bull; Max. 500 MB</p>
+      <input type="file" id="fileInput" accept=".fbx,.zip">
     </div>
   </div>
 
@@ -710,20 +696,21 @@ WEB_UI = r"""
 </div>
 
 <script>
+// ===== State =====
 let activeJobs = new Set();
 let folderFiles = [];
 
+// ===== Options Helper =====
 function getOptions() {
   return {
     vrm_version: document.getElementById('optVrmVersion').value,
     expression_mapping: document.getElementById('optExprMapping').value,
     normalize: document.getElementById('optNormalize').checked,
     auto_weight: document.getElementById('optAutoWeight').checked,
-    eye_tracking: document.getElementById('optEyeTracking').checked,
-    lipsync: document.getElementById('optLipsync').checked,
   };
 }
 
+// ===== Tabs =====
 function switchTab(tab) {
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
   document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
@@ -731,6 +718,7 @@ function switchTab(tab) {
   document.querySelectorAll('.tab')[tab === 'folder' ? 0 : 1].classList.add('active');
 }
 
+// ===== Folder =====
 async function loadFolderFiles() {
   const btn = document.getElementById('refreshBtn');
   btn.disabled = true;
@@ -751,7 +739,7 @@ function renderFolderFiles() {
   const list = document.getElementById('folderFileList');
   const startBtn = document.getElementById('startFolderBtn');
   if (folderFiles.length === 0) {
-    list.innerHTML = '<div class="file-list-empty">Keine .glb, .gltf oder .zip Dateien in glb/ gefunden.</div>';
+    list.innerHTML = '<div class="file-list-empty">Keine .fbx oder .zip Dateien in fbx/ gefunden.</div>';
     startBtn.disabled = true;
     return;
   }
@@ -828,6 +816,7 @@ async function startFolderConvert() {
   }
 }
 
+// ===== Upload =====
 const uploadArea = document.getElementById('uploadArea');
 const fileInput = document.getElementById('fileInput');
 
@@ -837,8 +826,8 @@ uploadArea.addEventListener('drop', function(e) {
   e.preventDefault();
   uploadArea.classList.remove('dragover');
   const file = e.dataTransfer.files[0];
-  if (file && (file.name.endsWith('.glb') || file.name.endsWith('.gltf') || file.name.endsWith('.zip'))) uploadFile(file);
-  else alert('Bitte eine .glb, .gltf oder .zip Datei auswaehlen');
+  if (file && (file.name.endsWith('.fbx') || file.name.endsWith('.zip'))) uploadFile(file);
+  else alert('Bitte eine .fbx oder .zip Datei auswaehlen');
 });
 fileInput.addEventListener('change', function() { if (fileInput.files[0]) uploadFile(fileInput.files[0]); });
 
@@ -850,8 +839,6 @@ async function uploadFile(file) {
   formData.append('expression_mapping', opts.expression_mapping);
   formData.append('normalize', opts.normalize ? 'true' : 'false');
   formData.append('auto_weight', opts.auto_weight ? 'true' : 'false');
-  formData.append('eye_tracking', opts.eye_tracking ? 'true' : 'false');
-  formData.append('lipsync', opts.lipsync ? 'true' : 'false');
   try {
     const resp = await fetch('/convert', { method: 'POST', body: formData });
     const data = await resp.json();
@@ -863,6 +850,7 @@ async function uploadFile(file) {
   }
 }
 
+// ===== Jobs =====
 async function pollJobs() {
   if (activeJobs.size === 0) return;
   try {
@@ -920,6 +908,7 @@ function downloadJob(jobId) {
   window.location.href = '/jobs/' + jobId + '/download';
 }
 
+// ===== Init =====
 fetch('/jobs').then(function(r){return r.json();}).then(function(allJobs) {
   renderJobs(allJobs);
   for (const job of allJobs) {
@@ -937,10 +926,10 @@ loadFolderFiles();
 # ======================= MAIN =======================
 
 if __name__ == "__main__":
-    print(f"[GLB->VRM] Server: http://localhost:{SERVER_PORT}")
-    print(f"[GLB->VRM] Blender: {BLENDER_PATH}")
-    print(f"[GLB->VRM] Blender gefunden: {os.path.exists(BLENDER_PATH)}")
-    print(f"[GLB->VRM] glb/ Ordner: {GLB_DIR}")
-    print(f"[GLB->VRM] vrm/ Ordner: {VRM_DIR}")
-    print(f"[GLB->VRM] Features: Skeleton, Lipsync, Eye-Tracking, Emotionen")
+    print(f"[FBX->VRM] Server: http://localhost:{SERVER_PORT}")
+    print(f"[FBX->VRM] Blender: {BLENDER_PATH}")
+    print(f"[FBX->VRM] Blender gefunden: {os.path.exists(BLENDER_PATH)}")
+    print(f"[FBX->VRM] fbx/ Ordner: {FBX_DIR}")
+    print(f"[FBX->VRM] vrm/ Ordner: {VRM_DIR}")
+    print(f"[FBX->VRM] Keine Auto-Konvertierung - starte manuell ueber Web-UI")
     app.run(host=SERVER_HOST, port=SERVER_PORT, debug=False)

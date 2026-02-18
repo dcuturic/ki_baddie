@@ -1366,21 +1366,49 @@ _AUDIO_STREAM_PAGE_HTML = r"""<!DOCTYPE html>
     color: #666;
     margin-top: 4px;
   }
-  .start-btn {
-    display: none;
-    margin-top: 12px;
-    padding: 8px 20px;
+  .start-overlay {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(10, 10, 20, 0.95);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    z-index: 100;
+    cursor: pointer;
+  }
+  .start-overlay h2 {
+    color: #fff;
+    font-size: 22px;
+    margin-bottom: 16px;
+  }
+  .start-overlay .btn {
+    padding: 14px 40px;
     background: #2196f3;
     color: white;
     border: none;
-    border-radius: 6px;
+    border-radius: 8px;
     cursor: pointer;
-    font-size: 13px;
+    font-size: 16px;
+    transition: background 0.2s;
   }
-  .start-btn:hover { background: #1976d2; }
+  .start-overlay .btn:hover { background: #1565c0; }
+  .start-overlay .hint {
+    color: #888;
+    font-size: 12px;
+    margin-top: 12px;
+  }
 </style>
 </head>
 <body>
+
+<!-- Overlay der bei Chrome/Browser angezeigt wird (Autoplay Policy) -->
+<div class="start-overlay" id="overlay">
+  <h2>KI Audio Stream</h2>
+  <button class="btn" id="startBtn">Audio aktivieren</button>
+  <div class="hint">Klick oder Taste druecken fuer Audio-Wiedergabe</div>
+</div>
+
 <div class="container" id="panel">
   <div class="status">
     <span class="dot" id="dot"></span>
@@ -1389,7 +1417,6 @@ _AUDIO_STREAM_PAGE_HTML = r"""<!DOCTYPE html>
   <div class="volume-bar"><div class="volume-fill" id="vol"></div></div>
   <div class="info" id="info">Virtual Audio Output</div>
   <div class="mode-info" id="modeInfo"></div>
-  <button class="start-btn" id="startBtn" onclick="startAudio()">Audio starten</button>
 </div>
 
 <script>
@@ -1399,12 +1426,13 @@ const params = new URLSearchParams(window.location.search);
 
 if (params.get('hide') === '1') document.getElementById('panel').style.display = 'none';
 
-const dot    = document.getElementById('dot');
-const stxt   = document.getElementById('statusText');
-const vol    = document.getElementById('vol');
-const info   = document.getElementById('info');
-const mInfo  = document.getElementById('modeInfo');
-const sBtn   = document.getElementById('startBtn');
+const dot      = document.getElementById('dot');
+const stxt     = document.getElementById('statusText');
+const vol      = document.getElementById('vol');
+const info     = document.getElementById('info');
+const mInfo    = document.getElementById('modeInfo');
+const overlay  = document.getElementById('overlay');
+const startBtn = document.getElementById('startBtn');
 
 let audioCtx = null;
 let started  = false;
@@ -1417,8 +1445,6 @@ function initAudio() {
   if (audioCtx) return audioCtx;
   try {
     audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: SAMPLE_RATE });
-    // Sofort resume (in OBS erlaubt, im Browser nach user-gesture)
-    audioCtx.resume();
     return audioCtx;
   } catch (e) {
     console.error('AudioContext error:', e);
@@ -1492,7 +1518,7 @@ function enqueue(arrayBuffer) {
   if (!playing) playNext();
 }
 
-// --- SSE Mode (bevorzugt) ---
+// --- SSE Mode ---
 function connectSSE() {
   mInfo.textContent = 'Modus: SSE (Echtzeit)';
   setStatus('', 'Verbinde SSE...');
@@ -1539,7 +1565,6 @@ async function pollLoop() {
           if (ab.byteLength > 44) enqueue(ab);
         }
       }
-      // Kurz warten falls 204 (kein neuer Clip)
       if (resp.status === 204) await new Promise(r => setTimeout(r, 200));
     } catch (e) {
       setStatus('error', 'Polling Fehler...');
@@ -1549,15 +1574,25 @@ async function pollLoop() {
   }
 }
 
-// --- Start ---
-function startAudio() {
+// --- Start Audio + Stream ---
+async function startAudio() {
   if (started) return;
   started = true;
-  sBtn.style.display = 'none';
+  overlay.style.display = 'none';
 
   const ctx = initAudio();
   if (!ctx) {
     setStatus('error', 'AudioContext fehlgeschlagen');
+    return;
+  }
+
+  // Resume MUSS nach User-Gesture passieren
+  try { await ctx.resume(); } catch(e) { console.warn('resume:', e); }
+
+  if (ctx.state !== 'running') {
+    setStatus('error', 'Audio konnte nicht aktiviert werden');
+    started = false;
+    overlay.style.display = 'flex';
     return;
   }
 
@@ -1569,28 +1604,37 @@ function startAudio() {
   }
 }
 
-// OBS Browser Source: Autoplay erlaubt -> sofort starten
-// Normaler Browser: AudioContext braucht User-Gesture
+// --- Init: Autoplay-Check ---
+// Overlay ist standardmaessig SICHTBAR (fuer Chrome/Browser)
+// Wird nur versteckt wenn Autoplay funktioniert (OBS)
 (async () => {
-  const ctx = initAudio();
-  if (ctx && ctx.state === 'running') {
-    // Autoplay erlaubt (OBS / Chrome mit Flag)
-    startAudio();
-  } else if (ctx) {
-    // Warte kurz und check nochmal (OBS kann etwas dauern)
-    await new Promise(r => setTimeout(r, 500));
-    await ctx.resume().catch(() => {});
+  try {
+    const ctx = initAudio();
+    if (!ctx) {
+      setStatus('error', 'AudioContext nicht verfuegbar');
+      return;
+    }
+
+    // Klick-Handler SOFORT registrieren (bevor async-Zeug)
+    startBtn.addEventListener('click', startAudio);
+    overlay.addEventListener('click', startAudio);
+    document.addEventListener('keydown', startAudio, { once: true });
+
+    // Versuche sofort zu starten (funktioniert in OBS)
+    try { await ctx.resume(); } catch(e) {}
+    await new Promise(r => setTimeout(r, 300));
+
     if (ctx.state === 'running') {
+      // Autoplay erlaubt (OBS Browser Source / Chrome mit Flag)
+      // -> Overlay verstecken und direkt starten
       startAudio();
     } else {
-      // Normaler Browser: Klick-Button zeigen
-      setStatus('connected', 'Klick um Audio zu starten');
-      sBtn.style.display = 'inline-block';
-      sBtn.onclick = () => {
-        ctx.resume();
-        startAudio();
-      };
+      // Chrome/Firefox: User-Gesture noetig -> Overlay bleibt sichtbar
+      setStatus('connected', 'Klick um Audio zu aktivieren');
     }
+  } catch(err) {
+    console.error('Init error:', err);
+    setStatus('error', 'Fehler: ' + err.message);
   }
 })();
 </script>

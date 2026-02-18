@@ -1,16 +1,16 @@
 """
-Voice Chat Service — Mikrofon → STT → KI Chat → TTS Pipeline
+Voice Chat Service -- Mikrofon -> STT -> KI Chat -> TTS Pipeline
 ===============================================================
 Hört dauerhaft auf das Mikrofon, erkennt Sprache per Vosk (VAD-basiert),
 sendet den erkannten Text an den KI-Chat und lässt die Antwort per TTS vorlesen.
 
 Pipeline:
-  [Mikrofon] → [Vosk STT] → [ki_chat /chat] → [textToSpeech /tts] → [Lautsprecher]
+  [Mikrofon] -> [Vosk STT] -> [ki_chat /chat] -> [textToSpeech /tts] -> [Lautsprecher]
 
 Nutzung:
   1. python app.py
   2. Listening startet automatisch (oder per API /listen/start)
-  3. Einfach reden — der Service erkennt automatisch Sprache
+  3. Einfach reden - der Service erkennt automatisch Sprache
 """
 
 import os
@@ -197,7 +197,7 @@ def load_vosk_model():
     _log(f"Lade Vosk-Modell: {model_path} ...")
     try:
         VOSK_MODEL = Model(model_path)
-        _log("Vosk-Modell geladen ✅")
+        _log("Vosk-Modell geladen [OK]")
         return True
     except Exception as e:
         _log(f"Fehler beim Laden: {e}", "ERROR")
@@ -211,7 +211,7 @@ def send_to_chat(text: str) -> Optional[Dict]:
     chat_url = f"{KI_CHAT_URL.rstrip('/')}/chat"
     message = f"{SPEAKER_NAME}: {text}" if SPEAKER_NAME else text
 
-    _log(f"→ Chat: {message}")
+    _log(f"-> Chat: {message}")
     try:
         r = http_requests.post(
             chat_url,
@@ -222,7 +222,7 @@ def send_to_chat(text: str) -> Optional[Dict]:
         data = r.json()
         reply = data.get("reply", "")
         emotion = data.get("emotion", "neutral")
-        _log(f"← Chat: [{emotion}] {reply}")
+        _log(f"<- Chat: [{emotion}] {reply}")
         _stats["total_sent_to_chat"] += 1
         _stats["last_reply"] = reply
         _stats["last_emotion"] = emotion
@@ -242,11 +242,11 @@ def send_to_tts(reply: str, emotion: str = "neutral"):
         "play_audio": True,
     }
 
-    _log(f"→ TTS: [{emotion}] {reply[:80]}...")
+    _log(f"-> TTS: [{emotion}] {reply[:80]}...")
     try:
         r = http_requests.post(tts_url, json=payload, timeout=HTTP_TIMEOUT)
         r.raise_for_status()
-        _log("← TTS: OK ✅")
+        _log("<- TTS: OK")
         _stats["total_tts_played"] += 1
     except Exception as e:
         _log(f"TTS-Fehler: {e}", "ERROR")
@@ -254,7 +254,7 @@ def send_to_tts(reply: str, emotion: str = "neutral"):
 
 
 def process_speech(text: str):
-    """Volle Pipeline: Text → Chat → TTS."""
+    """Volle Pipeline: Text -> Chat -> TTS."""
     global _is_processing
 
     _is_processing = True
@@ -296,7 +296,7 @@ def _listener_loop(stop_event: threading.Event):
         return
 
     if VOSK_MODEL is None:
-        _log("Vosk-Modell nicht geladen — Listener kann nicht starten", "ERROR")
+        _log("Vosk-Modell nicht geladen - Listener kann nicht starten", "ERROR")
         _is_listening = False
         return
 
@@ -309,7 +309,7 @@ def _listener_loop(stop_event: threading.Event):
             pass  # Ignore minor status messages
         audio_queue.put(bytes(indata))
 
-    _log(f"🎤 Starte Mikrofon-Listener (Device: {device or 'default'}, Rate: {MIC_SAMPLE_RATE})")
+    _log(f"[MIC] Starte Mikrofon-Listener (Device: {device or 'default'}, Rate: {MIC_SAMPLE_RATE})")
     _is_listening = True
     _stats["started_at"] = datetime.now().isoformat()
 
@@ -325,7 +325,7 @@ def _listener_loop(stop_event: threading.Event):
             stream_kwargs["device"] = device
 
         with sd.RawInputStream(**stream_kwargs):
-            _log("🎤 Mikrofon aktiv — sprich jetzt!")
+            _log("[MIC] Mikrofon aktiv - sprich jetzt!")
 
             silence_start = None
             has_speech = False
@@ -355,7 +355,7 @@ def _listener_loop(stop_event: threading.Event):
                     if not has_speech:
                         has_speech = True
                         speech_start = time.time()
-                        _log("🗣️ Sprache erkannt...")
+                        _log("[SPEECH] Sprache erkannt...")
                     silence_start = None
                 else:
                     if has_speech and silence_start is None:
@@ -369,10 +369,10 @@ def _listener_loop(stop_event: threading.Event):
                     if text and has_speech:
                         speech_duration = time.time() - (speech_start or time.time())
                         if speech_duration >= MIN_SPEECH_LENGTH:
-                            _log(f"📝 Erkannt: \"{text}\"")
+                            _log(f"[STT] Erkannt: \"{text}\"")
                             _stats["total_recognized"] += 1
 
-                            # In eigenem Thread verarbeiten damit Listener weiterläuft
+                            # In eigenem Thread verarbeiten damit Listener weiterlaeuft
                             threading.Thread(
                                 target=process_speech,
                                 args=(text,),
@@ -392,7 +392,7 @@ def _listener_loop(stop_event: threading.Event):
                     if text:
                         speech_duration = time.time() - (speech_start or time.time())
                         if speech_duration >= MIN_SPEECH_LENGTH:
-                            _log(f"📝 Erkannt (Stille): \"{text}\"")
+                            _log(f"[STT] Erkannt (Stille): \"{text}\"")
                             _stats["total_recognized"] += 1
 
                             threading.Thread(
@@ -411,7 +411,7 @@ def _listener_loop(stop_event: threading.Event):
         _log(f"Listener-Fehler: {e}\n{traceback.format_exc()}", "ERROR")
     finally:
         _is_listening = False
-        _log("🎤 Mikrofon-Listener gestoppt")
+        _log("[MIC] Mikrofon-Listener gestoppt")
 
 
 def start_listening() -> Dict:
@@ -548,7 +548,7 @@ def api_logs():
 
 if __name__ == "__main__":
     print("=" * 60)
-    print("  Voice Chat — Mikrofon → KI Chat → TTS")
+    print("  Voice Chat -- Mikrofon -> KI Chat -> TTS")
     print("=" * 60)
     print(f"  Server:      http://localhost:{SERVER_PORT}")
     print(f"  Mikrofon:    {MIC_DEVICE_NAME or '(System-Default)'}")
@@ -564,7 +564,7 @@ if __name__ == "__main__":
     if devices:
         print("\n  Audio-Eingabegeräte:")
         for d in devices:
-            marker = " ◄" if MIC_DEVICE_NAME and _normalize_name(MIC_DEVICE_NAME) in _normalize_name(d["name"]) else ""
+            marker = " <--" if MIC_DEVICE_NAME and _normalize_name(MIC_DEVICE_NAME) in _normalize_name(d["name"]) else ""
             print(f"    [{d['index']}] {d['name']}{marker}")
         print()
 
