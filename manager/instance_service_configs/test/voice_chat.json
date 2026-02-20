@@ -1,0 +1,29 @@
+{
+  "auto_start_listening": true,
+  "chat": {
+    "http_timeout": 120,
+    "speaker_name": "deeliar"
+  },
+  "microphone": {
+    "allow_partial_match": true,
+    "device_name": "CABLE Output (VB-Audio Virtual Cable)",
+    "sample_rate": 16000
+  },
+  "server": {
+    "host": "0.0.0.0",
+    "port": 5010
+  },
+  "services": {
+    "ki_chat": "http://127.0.0.1:5001",
+    "text_to_speech": "http://127.0.0.1:5057"
+  },
+  "stt": {
+    "vosk_log_level": 0,
+    "vosk_model_path": "../main_server/models/vosk-model-de-0.21"
+  },
+  "vad": {
+    "energy_threshold": 300,
+    "min_speech_length": 0.5,
+    "silence_timeout": 1.5
+  }
+}

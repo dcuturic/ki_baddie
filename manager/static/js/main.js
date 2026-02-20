@@ -24,9 +24,44 @@ function formatBytes(bytes) {
 /**
  * Show notification/toast
  */
-function showNotification(message, type = 'info') {
-    // TODO: Implement toast notifications
-    console.log(`[${type.toUpperCase()}] ${message}`);
+function showNotification(message, type = 'info', duration = 4000) {
+    let container = document.getElementById('toast-container');
+    if (!container) {
+        container = document.createElement('div');
+        container.id = 'toast-container';
+        document.body.appendChild(container);
+    }
+
+    const icons = { success: '✓', error: '✕', warning: '⚠', info: 'ℹ' };
+    const toast = document.createElement('div');
+    toast.className = `toast toast-${type}`;
+    toast.innerHTML = `
+        <span class="toast-icon">${icons[type] || icons.info}</span>
+        <span class="toast-message">${message}</span>
+        <button class="toast-close" onclick="this.parentElement.remove()">×</button>
+    `;
+
+    container.appendChild(toast);
+    // Trigger entrance animation
+    requestAnimationFrame(() => toast.classList.add('toast-visible'));
+
+    // Auto-dismiss
+    const timer = setTimeout(() => {
+        toast.classList.remove('toast-visible');
+        toast.addEventListener('transitionend', () => toast.remove(), { once: true });
+        // Fallback removal
+        setTimeout(() => { if (toast.parentElement) toast.remove(); }, 400);
+    }, duration);
+
+    // Pause timer on hover
+    toast.addEventListener('mouseenter', () => clearTimeout(timer));
+    toast.addEventListener('mouseleave', () => {
+        setTimeout(() => {
+            toast.classList.remove('toast-visible');
+            toast.addEventListener('transitionend', () => toast.remove(), { once: true });
+            setTimeout(() => { if (toast.parentElement) toast.remove(); }, 400);
+        }, 1500);
+    });
 }
 
 /**
@@ -761,6 +796,37 @@ window.addEventListener('error', (event) => {
 
 // ==================== KEYBOARD SHORTCUTS ====================
 
+const _shortcuts = [
+    { keys: 'Ctrl + S', description: 'Config speichern (im Editor)' },
+    { keys: 'Ctrl + R', description: 'Config neu laden (im Editor)' },
+    { keys: '?', description: 'Shortcuts Übersicht anzeigen' },
+    { keys: 'Escape', description: 'Modal / Overlay schließen' },
+];
+
+function showShortcutsOverlay() {
+    let overlay = document.getElementById('shortcuts-overlay');
+    if (overlay) {
+        overlay.style.display = overlay.style.display === 'flex' ? 'none' : 'flex';
+        return;
+    }
+    overlay = document.createElement('div');
+    overlay.id = 'shortcuts-overlay';
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;';
+    overlay.onclick = (e) => { if (e.target === overlay) overlay.style.display = 'none'; };
+    const rows = _shortcuts.map(s =>
+        `<tr><td style="padding:0.5rem 1rem;"><kbd style="background:var(--bg-tertiary);padding:0.2rem 0.6rem;border-radius:4px;font-size:0.85rem;border:1px solid var(--border-color);">${s.keys}</kbd></td><td style="padding:0.5rem 1rem;color:var(--text-secondary);">${s.description}</td></tr>`
+    ).join('');
+    overlay.innerHTML = `
+        <div style="background:var(--bg-secondary);border:1px solid var(--border-color);border-radius:12px;padding:1.5rem 2rem;min-width:360px;box-shadow:var(--shadow-lg);">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
+                <h3 style="color:var(--text-primary);margin:0;">⌨️ Keyboard Shortcuts</h3>
+                <button onclick="document.getElementById('shortcuts-overlay').style.display='none'" style="background:none;border:none;color:var(--text-muted);font-size:1.3rem;cursor:pointer;">×</button>
+            </div>
+            <table style="width:100%;">${rows}</table>
+        </div>`;
+    document.body.appendChild(overlay);
+}
+
 document.addEventListener('keydown', (event) => {
     // Ctrl/Cmd + S to save config
     if ((event.ctrlKey || event.metaKey) && event.key === 's') {
@@ -782,6 +848,25 @@ document.addEventListener('keydown', (event) => {
                 reloadConfig();
             }
         }
+    }
+
+    // ? to show shortcuts overlay (when not in an input)
+    if (event.key === '?' && !event.ctrlKey && !event.metaKey) {
+        const tag = document.activeElement?.tagName;
+        if (tag !== 'INPUT' && tag !== 'TEXTAREA' && tag !== 'SELECT') {
+            event.preventDefault();
+            showShortcutsOverlay();
+        }
+    }
+
+    // Escape to close overlays
+    if (event.key === 'Escape') {
+        const shortcutsOv = document.getElementById('shortcuts-overlay');
+        if (shortcutsOv && shortcutsOv.style.display === 'flex') {
+            shortcutsOv.style.display = 'none';
+            return;
+        }
+        if (typeof closeModal === 'function') closeModal();
     }
 });
 

@@ -73,7 +73,7 @@ OSC_FORWARD_HOST = osc_cfg.get("forward_host", "127.0.0.1")
 OSC_FORWARD_PORT = osc_cfg.get("forward_port", 39540)
 
 vrm_cfg = CONFIG.get("vrm", {})
-VRM_MODEL_PATH = "models/dilara3.vrm"
+VRM_MODEL_PATH = vrm_cfg.get("model_path", "models/dilara.vrm")
 MODEL_FORMAT = "glb" if VRM_MODEL_PATH.lower().endswith(".glb") else "vrm"
 
 cam_cfg = CONFIG.get("camera", {})
@@ -84,9 +84,11 @@ CAM_FOV = cam_cfg.get("fov", 28)
 # ======================= FLASK + SOCKET.IO =======================
 
 app = Flask(__name__, static_folder="static", static_url_path="/static")
-app.config["SECRET_KEY"] = "web-avatar-secret"
+app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", os.urandom(24).hex())
 app.json.ensure_ascii = False
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading")
+
+_cors_origins = CONFIG.get("cors_allowed_origins", "*")
+socketio = SocketIO(app, cors_allowed_origins=_cors_origins, async_mode="threading")
 
 # ======================= STATE BUFFERS =======================
 # Bone data: accumulated per frame, broadcast at 30fps

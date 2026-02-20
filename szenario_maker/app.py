@@ -19,6 +19,13 @@ from datetime import datetime
 from typing import Dict, List, Optional, Any
 from dataclasses import dataclass, asdict, field
 
+# Filename validation pattern — only safe characters
+_SAFE_FILENAME_RE = re.compile(r'^[a-zA-Z0-9_\-]+$')
+
+def _validate_filename(filename: str) -> bool:
+    """Reject filenames with path traversal or special characters."""
+    return bool(_SAFE_FILENAME_RE.match(filename))
+
 # ===== Windows UTF-8 fix =====
 os.environ["PYTHONIOENCODING"] = "utf-8"
 os.environ["PYTHONUTF8"] = "1"
@@ -128,6 +135,8 @@ def list_scenarios() -> List[Dict]:
     return scenarios
 
 def load_scenario(filename: str) -> Optional[Dict]:
+    if not _validate_filename(filename):
+        return None
     path = SCENARIOS_DIR / f"{filename}.json"
     if not path.exists():
         return None
@@ -135,11 +144,15 @@ def load_scenario(filename: str) -> Optional[Dict]:
         return json.load(f)
 
 def save_scenario(filename: str, data: Dict) -> None:
+    if not _validate_filename(filename):
+        raise ValueError(f"Invalid filename: {filename}")
     path = SCENARIOS_DIR / f"{filename}.json"
     with open(path, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
 def delete_scenario(filename: str) -> bool:
+    if not _validate_filename(filename):
+        return False
     path = SCENARIOS_DIR / f"{filename}.json"
     if path.exists():
         path.unlink()
@@ -769,8 +782,8 @@ def run_experiment(experiment: ActiveExperiment):
                                 channel_histories.get(fwd_id, []) + channel_histories.get(rev_id, []),
                                 key=lambda m: m["turn"]
                             )
-                            channel_histories[fwd_id] = merged_history
-                            channel_histories[rev_id] = merged_history
+                            channel_histories[fwd_id] = list(merged_history)
+                            channel_histories[rev_id] = list(merged_history)
 
                             msg = fire_channel(
                                 active_ch, experiment, participants, scenario,
@@ -1241,6 +1254,8 @@ def api_list_transcripts():
 
 @app.route("/api/transcripts/<filename>", methods=["GET"])
 def api_get_transcript(filename):
+    if not _validate_filename(filename):
+        return jsonify({"error": "Ungültiger Dateiname"}), 400
     path = TRANSCRIPTS_DIR / f"{filename}.json"
     if not path.exists():
         return jsonify({"error": "Transcript nicht gefunden"}), 404
@@ -1256,6 +1271,6 @@ if __name__ == "__main__":
     app.run(
         host=server_cfg.get("host", "0.0.0.0"),
         port=server_cfg.get("port", 8050),
-        debug=server_cfg.get("debug", True),
+        debug=server_cfg.get("debug", False),
         threaded=True
     )

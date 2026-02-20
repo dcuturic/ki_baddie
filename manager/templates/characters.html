@@ -1,0 +1,929 @@
+{% extends "base.html" %}
+
+{% block title %}Characters - KI Girl Manager{% endblock %}
+{% block page_title %}🎭 Character Manager{% endblock %}
+{% block page_subtitle %}Erstelle und verwalte deine Charaktere – Chat, Voice &amp; 3D-Modell{% endblock %}
+
+{% block page_actions %}
+<button class="btn btn-primary" onclick="CharManager.showCreateDialog()">
+    ✨ Neuer Character
+</button>
+{% endblock %}
+
+{% block content %}
+<!-- Character Grid -->
+<div class="char-grid" id="charGrid">
+    {% for char_id, char in characters.items() %}
+    <div class="char-card" data-id="{{ char_id }}" onclick="CharManager.openEditor('{{ char_id }}')">
+        <div class="char-card-header">
+            {% set colors = ['#7c3aed','#3b82f6','#10b981','#f59e0b','#ef4444','#ec4899','#8b5cf6','#06b6d4'] %}
+            <div class="char-avatar" style="background: {{ colors[loop.index0 % 8] }}">
+                {{ char.display_name[0]|upper if char.display_name else '?' }}
+            </div>
+            <div class="char-info">
+                <h3 class="char-name">{{ char.display_name }}</h3>
+                <span class="char-id">{{ char_id }}</span>
+            </div>
+        </div>
+        <div class="char-assets">
+            <span class="char-asset-badge badge-active" title="Chat Konfiguration">
+                💬 Chat
+            </span>
+            <span class="char-asset-badge {% if char.effective_voice %}badge-active{% else %}badge-missing{% endif %}" title="Voice">
+                🎙️ {% if char.assigned_voice %}Manuell{% elif char.auto_voice %}Auto{% else %}–{% endif %}
+            </span>
+            <span class="char-asset-badge {% if char.effective_model %}badge-active{% else %}badge-missing{% endif %}" title="3D Model">
+                🧊 {% if char.assigned_model %}Manuell{% elif char.auto_models %}Auto{% else %}–{% endif %}
+            </span>
+        </div>
+        {% if char.effective_voice or char.effective_model %}
+        <div class="char-meta">
+            {% if char.effective_voice %}
+            <span class="char-meta-item" title="Voice">🎙️ {{ char.effective_voice.name }}</span>
+            {% endif %}
+            {% if char.effective_model %}
+            <span class="char-meta-item" title="Model">🧊 {{ char.effective_model.name }}</span>
+            {% endif %}
+        </div>
+        {% endif %}
+        {% if char.chat_config and char.chat_config.model %}
+        <div class="char-meta">
+            <span class="char-meta-item" title="LLM Model">🤖 {{ char.chat_config.model }}</span>
+        </div>
+        {% endif %}
+    </div>
+    {% endfor %}
+
+    {% if not characters %}
+    <div class="char-empty">
+        <div class="char-empty-icon">🎭</div>
+        <h3>Noch keine Characters</h3>
+        <p>Erstelle deinen ersten Character um loszulegen!</p>
+        <button class="btn btn-primary" onclick="CharManager.showCreateDialog()">✨ Neuer Character</button>
+    </div>
+    {% endif %}
+</div>
+
+<!-- ============================================================ -->
+<!-- CREATE DIALOG -->
+<!-- ============================================================ -->
+<div class="char-overlay" id="createOverlay" style="display:none" onclick="CharManager.closeCreateDialog(event)">
+    <div class="char-dialog">
+        <div class="char-dialog-header">
+            <h3>✨ Neuen Character erstellen</h3>
+            <button class="char-dialog-close" onclick="CharManager.closeCreateDialog()">&times;</button>
+        </div>
+        <div class="char-dialog-body">
+            <div class="form-group">
+                <label>Character ID <small>(nur Kleinbuchstaben, keine Leerzeichen)</small></label>
+                <input type="text" id="newCharId" class="form-input" placeholder="z.B. sakura" 
+                       pattern="[a-z0-9_]+" oninput="this.value = this.value.toLowerCase().replace(/[^a-z0-9_]/g, '')">
+            </div>
+            <div class="form-group">
+                <label>Anzeige-Name</label>
+                <input type="text" id="newCharName" class="form-input" placeholder="z.B. Sakura">
+            </div>
+        </div>
+        <div class="char-dialog-footer">
+            <button class="btn btn-secondary" onclick="CharManager.closeCreateDialog()">Abbrechen</button>
+            <button class="btn btn-primary" onclick="CharManager.createCharacter()">Erstellen</button>
+        </div>
+    </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- EDITOR PANEL (full-page slide-in) -->
+<!-- ============================================================ -->
+<div class="char-editor-overlay" id="editorOverlay" style="display:none">
+    <div class="char-editor">
+        <!-- Editor Header -->
+        <div class="char-editor-header">
+            <div class="char-editor-title">
+                <button class="btn btn-secondary btn-sm" onclick="CharManager.closeEditor()">← Zurück</button>
+                <div class="char-editor-avatar" id="editorAvatar">?</div>
+                <div>
+                    <h2 id="editorTitle">Character</h2>
+                    <span class="char-id" id="editorId"></span>
+                </div>
+            </div>
+            <div class="char-editor-actions">
+                <button class="btn btn-success" onclick="CharManager.saveCharacter()">💾 Speichern</button>
+                <button class="btn btn-danger-outline btn-sm" onclick="CharManager.deleteCharacter()">🗑️ Löschen</button>
+            </div>
+        </div>
+
+        <!-- Editor Tabs -->
+        <div class="char-editor-tabs">
+            <button class="char-tab active" data-tab="chat" onclick="CharManager.switchTab('chat')">💬 Chat Config</button>
+            <button class="char-tab" data-tab="prompt" onclick="CharManager.switchTab('prompt')">📝 System Prompt</button>
+            <button class="char-tab" data-tab="voice" onclick="CharManager.switchTab('voice')">🎙️ Voice</button>
+            <button class="char-tab" data-tab="model" onclick="CharManager.switchTab('model')">🧊 3D Model</button>
+            <button class="char-tab" data-tab="overview" onclick="CharManager.switchTab('overview')">📊 Übersicht</button>
+        </div>
+
+        <!-- Editor Content -->
+        <div class="char-editor-content">
+            
+            <!-- TAB: Chat Config -->
+            <div class="char-tab-content active" id="tab-chat">
+                <div class="editor-form">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Name</label>
+                            <input type="text" id="cfg_name" class="form-input" placeholder="Anzeige-Name">
+                        </div>
+                        <div class="form-group">
+                            <label>Self Username</label>
+                            <input type="text" id="cfg_self_username" class="form-input" placeholder="__username__">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>LLM Model</label>
+                            <input type="text" id="cfg_model" class="form-input" placeholder="model-name:latest">
+                        </div>
+                        <div class="form-group">
+                            <label>DB Path</label>
+                            <input type="text" id="cfg_db_path" class="form-input" placeholder="memory_name.db">
+                        </div>
+                    </div>
+                    <div class="form-row three-col">
+                        <div class="form-group">
+                            <label>Thinking Rate</label>
+                            <div class="range-wrapper">
+                                <input type="range" id="cfg_thinking_rate" min="0" max="1" step="0.05" value="0.5"
+                                       oninput="document.getElementById('cfg_thinking_rate_val').textContent = this.value">
+                                <span class="range-value" id="cfg_thinking_rate_val">0.5</span>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label>Max History</label>
+                            <input type="number" id="cfg_max_history" class="form-input" min="1" max="100" value="16">
+                        </div>
+                        <div class="form-group">
+                            <label>Max User Focus</label>
+                            <input type="number" id="cfg_max_user_focus" class="form-input" min="1" max="50" value="6">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="toggle-label">
+                                <input type="checkbox" id="cfg_enable_auto_memory" class="toggle-input">
+                                <span class="toggle-track"><span class="toggle-thumb"></span></span>
+                                Auto Memory
+                            </label>
+                        </div>
+                        <div class="form-group">
+                            <label class="toggle-label">
+                                <input type="checkbox" id="cfg_enable_pervy_guard" class="toggle-input">
+                                <span class="toggle-track"><span class="toggle-thumb"></span></span>
+                                Pervy Guard
+                            </label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB: System Prompt -->
+            <div class="char-tab-content" id="tab-prompt">
+                <div class="editor-form">
+                    <div class="form-group">
+                        <label>System Prompt <small>(mehrzeilig – definiert die Persönlichkeit)</small></label>
+                        <textarea id="cfg_system_prompt" class="form-textarea prompt-editor" rows="30" 
+                                  placeholder="SYSTEM:\nName: ...\n\nPERSÖNLICHKEIT:\n..."></textarea>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB: Voice -->
+            <div class="char-tab-content" id="tab-voice">
+                <div class="editor-form">
+                    <!-- Current voice status -->
+                    <div class="asset-current-card" id="voiceCurrentCard">
+                        <div class="asset-current-header">
+                            <h4>🎙️ Aktive Voice</h4>
+                            <span class="asset-source-badge" id="voiceSourceBadge">–</span>
+                        </div>
+                        <div class="asset-current-body" id="voiceCurrentBody">
+                            <p class="text-muted">Keine Voice zugewiesen</p>
+                        </div>
+                    </div>
+
+                    <!-- Mode switcher -->
+                    <div class="asset-mode-switcher">
+                        <button class="asset-mode-btn active" data-mode="pick" onclick="CharManager.switchVoiceMode('pick')">
+                            📋 Aus Liste wählen
+                        </button>
+                        <button class="asset-mode-btn" data-mode="upload" onclick="CharManager.switchVoiceMode('upload')">
+                            📤 Neue Voice hochladen
+                        </button>
+                    </div>
+
+                    <!-- PICK mode: all available voices -->
+                    <div class="asset-pick-panel" id="voicePickPanel">
+                        <div class="asset-search">
+                            <input type="text" class="form-input" placeholder="🔍 Voice suchen..." 
+                                   id="voiceSearch" oninput="CharManager.filterVoices()">
+                        </div>
+                        <div class="asset-grid" id="voiceGrid">
+                            <!-- filled by JS -->
+                        </div>
+                    </div>
+
+                    <!-- UPLOAD mode -->
+                    <div class="asset-upload-panel" id="voiceUploadPanel" style="display:none">
+                        <div class="file-upload-zone" id="voiceDropZone"
+                             ondragover="event.preventDefault(); this.classList.add('drag-over')"
+                             ondragleave="this.classList.remove('drag-over')"
+                             ondrop="CharManager.handleVoiceDrop(event)">
+                            <div class="file-upload-content">
+                                <span class="file-upload-icon">📁</span>
+                                <p>WAV, MP3 oder OGG hierhin ziehen</p>
+                                <p class="text-muted">oder</p>
+                                <label class="btn btn-primary btn-sm">
+                                    Datei auswählen
+                                    <input type="file" accept=".wav,.mp3,.ogg,.flac" style="display:none"
+                                           onchange="CharManager.uploadVoice(this.files[0])">
+                                </label>
+                            </div>
+                        </div>
+                        <p class="text-muted" style="margin-top: 0.75rem; font-size: 0.8rem">
+                            Die Datei wird als <strong><span id="voiceUploadName">charname</span>.wav</strong> in textToSpeech/voices/ gespeichert
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB: 3D Model -->
+            <div class="char-tab-content" id="tab-model">
+                <div class="editor-form">
+                    <!-- Current model status -->
+                    <div class="asset-current-card" id="modelCurrentCard">
+                        <div class="asset-current-header">
+                            <h4>🧊 Aktives 3D Model</h4>
+                            <span class="asset-source-badge" id="modelSourceBadge">–</span>
+                        </div>
+                        <div class="asset-current-body" id="modelCurrentBody">
+                            <p class="text-muted">Kein Model zugewiesen</p>
+                        </div>
+                    </div>
+
+                    <!-- Mode switcher -->
+                    <div class="asset-mode-switcher">
+                        <button class="asset-mode-btn active" data-mode="pick" onclick="CharManager.switchModelMode('pick')">
+                            📋 Aus Liste wählen
+                        </button>
+                        <button class="asset-mode-btn" data-mode="upload" onclick="CharManager.switchModelMode('upload')">
+                            📤 Neues Model hochladen
+                        </button>
+                    </div>
+
+                    <!-- PICK mode: all available models -->
+                    <div class="asset-pick-panel" id="modelPickPanel">
+                        <div class="asset-search">
+                            <input type="text" class="form-input" placeholder="🔍 Model suchen..." 
+                                   id="modelSearch" oninput="CharManager.filterModels()">
+                        </div>
+                        <div class="asset-grid" id="modelGrid">
+                            <!-- filled by JS -->
+                        </div>
+                    </div>
+
+                    <!-- UPLOAD mode -->
+                    <div class="asset-upload-panel" id="modelUploadPanel" style="display:none">
+                        <div class="file-upload-zone" id="modelDropZone"
+                             ondragover="event.preventDefault(); this.classList.add('drag-over')"
+                             ondragleave="this.classList.remove('drag-over')"
+                             ondrop="CharManager.handleModelDrop(event)">
+                            <div class="file-upload-content">
+                                <span class="file-upload-icon">📁</span>
+                                <p>VRM oder GLB hierhin ziehen</p>
+                                <p class="text-muted">oder</p>
+                                <label class="btn btn-primary btn-sm">
+                                    Datei auswählen
+                                    <input type="file" accept=".vrm,.glb" style="display:none"
+                                           onchange="CharManager.uploadModel(this.files[0])">
+                                </label>
+                            </div>
+                        </div>
+                        <p class="text-muted" style="margin-top: 0.75rem; font-size: 0.8rem">
+                            Die Datei wird als <strong><span id="modelUploadName">charname</span>.vrm</strong> in web_avatar/models/ gespeichert
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB: Overview -->
+            <div class="char-tab-content" id="tab-overview">
+                <div class="overview-grid">
+                    <div class="overview-card">
+                        <div class="overview-card-header">
+                            <span class="overview-icon">💬</span>
+                            <h4>Chat Config</h4>
+                        </div>
+                        <div class="overview-card-body" id="overviewChat">
+                            <p class="text-muted">Nicht konfiguriert</p>
+                        </div>
+                    </div>
+                    <div class="overview-card">
+                        <div class="overview-card-header">
+                            <span class="overview-icon">🎙️</span>
+                            <h4>Voice</h4>
+                        </div>
+                        <div class="overview-card-body" id="overviewVoice">
+                            <p class="text-muted">Keine Voice</p>
+                        </div>
+                    </div>
+                    <div class="overview-card">
+                        <div class="overview-card-header">
+                            <span class="overview-icon">🧊</span>
+                            <h4>3D Model</h4>
+                        </div>
+                        <div class="overview-card-body" id="overviewModel">
+                            <p class="text-muted">Kein Model</p>
+                        </div>
+                    </div>
+                    <div class="overview-card full-width">
+                        <div class="overview-card-header">
+                            <span class="overview-icon">📂</span>
+                            <h4>Asset Zuordnung</h4>
+                        </div>
+                        <div class="overview-card-body" id="overviewFiles">
+                            <p class="text-muted">Keine Dateien verknüpft</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Toast -->
+<div class="char-toast" id="charToast" style="display:none"></div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+// ============================================================================
+// Character Manager Frontend – with Auto-Match + Manual Assign
+// ============================================================================
+const CharManager = (() => {
+    let currentCharId = null;
+    let currentCharData = null;
+    let currentAssets = null;
+    let allCharacters = {{ characters | default({}) | tojson }};
+    let allVoices = {{ all_voices | default([]) | tojson }};
+    let allModels = {{ all_models | default([]) | tojson }};
+
+    // ===== Create Dialog =====
+    function showCreateDialog() {
+        document.getElementById('createOverlay').style.display = 'flex';
+        document.getElementById('newCharId').value = '';
+        document.getElementById('newCharName').value = '';
+        document.getElementById('newCharId').focus();
+    }
+
+    function closeCreateDialog(e) {
+        if (e && e.target !== e.currentTarget) return;
+        document.getElementById('createOverlay').style.display = 'none';
+    }
+
+    async function createCharacter() {
+        const id = document.getElementById('newCharId').value.trim();
+        const name = document.getElementById('newCharName').value.trim();
+        if (!id) { toast('Bitte eine ID eingeben', 'error'); return; }
+
+        try {
+            const res = await fetch('/api/characters/new', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id, name: name || id.charAt(0).toUpperCase() + id.slice(1) })
+            });
+            const data = await res.json();
+            if (data.success) {
+                toast(`Character "${id}" erstellt!`, 'success');
+                setTimeout(() => location.reload(), 600);
+            } else {
+                toast(data.error || 'Fehler', 'error');
+            }
+        } catch (e) {
+            toast('Netzwerkfehler: ' + e.message, 'error');
+        }
+    }
+
+    // ===== Editor =====
+    async function openEditor(charId) {
+        currentCharId = charId;
+        try {
+            const res = await fetch(`/api/characters/${charId}`);
+            const data = await res.json();
+            if (!data.success) { toast(data.error, 'error'); return; }
+
+            currentCharData = data.character;
+            currentAssets = data.assets;
+            populateEditor(charId, data.character, data.assets);
+
+            document.getElementById('editorOverlay').style.display = 'flex';
+            switchTab('chat');
+        } catch (e) {
+            toast('Fehler beim Laden: ' + e.message, 'error');
+        }
+    }
+
+    function closeEditor() {
+        document.getElementById('editorOverlay').style.display = 'none';
+        currentCharId = null;
+        currentCharData = null;
+        currentAssets = null;
+    }
+
+    function populateEditor(charId, cfg, assets) {
+        // Header
+        document.getElementById('editorTitle').textContent = cfg.name || charId;
+        document.getElementById('editorId').textContent = charId;
+        document.getElementById('editorAvatar').textContent = (cfg.name || charId)[0].toUpperCase();
+
+        // Chat Config fields
+        document.getElementById('cfg_name').value = cfg.name || '';
+        document.getElementById('cfg_self_username').value = cfg.self_username || '';
+        document.getElementById('cfg_model').value = cfg.model || '';
+        document.getElementById('cfg_db_path').value = cfg.db_path || '';
+        document.getElementById('cfg_thinking_rate').value = cfg.thinking_rate ?? 0.5;
+        document.getElementById('cfg_thinking_rate_val').textContent = cfg.thinking_rate ?? 0.5;
+        document.getElementById('cfg_max_history').value = cfg.max_history ?? 16;
+        document.getElementById('cfg_max_user_focus').value = cfg.max_user_focus ?? 6;
+        document.getElementById('cfg_enable_auto_memory').checked = cfg.enable_auto_memory ?? true;
+        document.getElementById('cfg_enable_pervy_guard').checked = cfg.enable_pervy_guard ?? false;
+
+        // System Prompt
+        const prompt = cfg.system_prompt || '';
+        document.getElementById('cfg_system_prompt').value = prompt.replace(/\\n/g, '\n');
+
+        // Upload name hints
+        document.getElementById('voiceUploadName').textContent = charId;
+        document.getElementById('modelUploadName').textContent = charId;
+
+        // Voice tab
+        populateVoiceTab(charId, assets);
+        // Model tab
+        populateModelTab(charId, assets);
+        // Overview tab
+        updateOverview(charId, cfg, assets);
+    }
+
+    // ===== Voice Tab =====
+    function populateVoiceTab(charId, assets) {
+        const eff = assets.effective_voice;
+        const card = document.getElementById('voiceCurrentCard');
+        const body = document.getElementById('voiceCurrentBody');
+        const badge = document.getElementById('voiceSourceBadge');
+
+        if (eff) {
+            card.classList.add('has-asset');
+            const isManual = !!assets.assigned_voice;
+            badge.textContent = isManual ? '📌 Manuell zugewiesen' : '🔗 Auto (gleicher Name)';
+            badge.className = 'asset-source-badge ' + (isManual ? 'badge-manual' : 'badge-auto');
+            body.innerHTML = `
+                <div class="asset-current-detail">
+                    <strong>${eff.name}</strong>
+                    <span class="text-muted">${(eff.size / 1024).toFixed(1)} KB</span>
+                </div>
+                ${isManual ? '<button class="btn btn-sm btn-danger-outline" onclick="CharManager.unassignVoice()" style="margin-top:0.5rem">Zuweisung aufheben</button>' : ''}
+            `;
+        } else {
+            card.classList.remove('has-asset');
+            badge.textContent = '–';
+            badge.className = 'asset-source-badge';
+            body.innerHTML = '<p class="text-muted">Keine Voice zugewiesen – wähle eine aus der Liste oder lade eine hoch</p>';
+        }
+
+        buildVoiceGrid();
+    }
+
+    function buildVoiceGrid(filter = '') {
+        const grid = document.getElementById('voiceGrid');
+        const assignedName = currentAssets?.assigned_voice;
+        const autoName = currentAssets?.auto_voice?.name;
+        const effectiveName = currentAssets?.effective_voice?.name;
+
+        let filtered = allVoices;
+        if (filter) {
+            const q = filter.toLowerCase();
+            filtered = allVoices.filter(v => v.name.toLowerCase().includes(q));
+        }
+
+        if (filtered.length === 0) {
+            grid.innerHTML = '<p class="text-muted" style="padding:1rem">Keine Voices gefunden</p>';
+            return;
+        }
+
+        grid.innerHTML = filtered.map(v => {
+            const isActive = v.name === effectiveName;
+            const isAuto = v.name === autoName && !assignedName;
+            const isManual = v.name === assignedName;
+            let badgeHtml = '';
+            if (isManual) badgeHtml = '<span class="pick-badge pick-badge-manual">📌 Zugewiesen</span>';
+            else if (isAuto) badgeHtml = '<span class="pick-badge pick-badge-auto">🔗 Auto</span>';
+
+            return `
+                <div class="asset-pick-item ${isActive ? 'pick-active' : ''}" onclick="CharManager.assignVoice('${v.name}')">
+                    <div class="pick-icon">🎙️</div>
+                    <div class="pick-info">
+                        <strong>${v.name}</strong>
+                        <small>${(v.size / 1024).toFixed(1)} KB</small>
+                    </div>
+                    ${badgeHtml}
+                </div>
+            `;
+        }).join('');
+    }
+
+    function filterVoices() {
+        const q = document.getElementById('voiceSearch').value;
+        buildVoiceGrid(q);
+    }
+
+    async function assignVoice(voiceName) {
+        if (!currentCharId) return;
+        try {
+            const res = await fetch(`/api/characters/${currentCharId}/assign`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ type: 'voice', value: voiceName })
+            });
+            const data = await res.json();
+            if (data.success) {
+                toast(`Voice "${voiceName}" zugewiesen`, 'success');
+                currentAssets.assigned_voice = voiceName;
+                currentAssets.resolved_voice = allVoices.find(v => v.name === voiceName) || null;
+                currentAssets.effective_voice = currentAssets.resolved_voice || currentAssets.auto_voice;
+                populateVoiceTab(currentCharId, currentAssets);
+            } else {
+                toast(data.error, 'error');
+            }
+        } catch (e) {
+            toast('Fehler: ' + e.message, 'error');
+        }
+    }
+
+    async function unassignVoice() {
+        if (!currentCharId) return;
+        try {
+            const res = await fetch(`/api/characters/${currentCharId}/assign`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ type: 'voice', value: null })
+            });
+            const data = await res.json();
+            if (data.success) {
+                toast('Voice-Zuweisung aufgehoben', 'success');
+                currentAssets.assigned_voice = null;
+                currentAssets.resolved_voice = null;
+                currentAssets.effective_voice = currentAssets.auto_voice;
+                populateVoiceTab(currentCharId, currentAssets);
+            }
+        } catch (e) {
+            toast('Fehler: ' + e.message, 'error');
+        }
+    }
+
+    function switchVoiceMode(mode) {
+        document.querySelectorAll('#tab-voice .asset-mode-btn').forEach(b => b.classList.remove('active'));
+        document.querySelector(`#tab-voice .asset-mode-btn[data-mode="${mode}"]`).classList.add('active');
+        document.getElementById('voicePickPanel').style.display = mode === 'pick' ? '' : 'none';
+        document.getElementById('voiceUploadPanel').style.display = mode === 'upload' ? '' : 'none';
+    }
+
+    // ===== Model Tab =====
+    function populateModelTab(charId, assets) {
+        const eff = assets.effective_model;
+        const card = document.getElementById('modelCurrentCard');
+        const body = document.getElementById('modelCurrentBody');
+        const badge = document.getElementById('modelSourceBadge');
+
+        if (eff) {
+            card.classList.add('has-asset');
+            const isManual = !!assets.assigned_model;
+            badge.textContent = isManual ? '📌 Manuell zugewiesen' : '🔗 Auto (gleicher Name)';
+            badge.className = 'asset-source-badge ' + (isManual ? 'badge-manual' : 'badge-auto');
+            body.innerHTML = `
+                <div class="asset-current-detail">
+                    <strong>${eff.name}</strong>
+                    <span class="text-muted">${eff.source || 'web_avatar'} · ${(eff.size / 1024 / 1024).toFixed(1)} MB · ${eff.ext?.toUpperCase()}</span>
+                </div>
+                ${isManual ? '<button class="btn btn-sm btn-danger-outline" onclick="CharManager.unassignModel()" style="margin-top:0.5rem">Zuweisung aufheben</button>' : ''}
+            `;
+        } else {
+            card.classList.remove('has-asset');
+            badge.textContent = '–';
+            badge.className = 'asset-source-badge';
+            body.innerHTML = '<p class="text-muted">Kein 3D Model zugewiesen – wähle eines aus der Liste oder lade eins hoch</p>';
+        }
+
+        buildModelGrid();
+    }
+
+    function buildModelGrid(filter = '') {
+        const grid = document.getElementById('modelGrid');
+        const assignedName = currentAssets?.assigned_model;
+        const autoModels = currentAssets?.auto_models || [];
+        const effectiveModel = currentAssets?.effective_model;
+
+        let filtered = allModels;
+        if (filter) {
+            const q = filter.toLowerCase();
+            filtered = allModels.filter(m => m.name.toLowerCase().includes(q) || m.source.toLowerCase().includes(q));
+        }
+
+        if (filtered.length === 0) {
+            grid.innerHTML = '<p class="text-muted" style="padding:1rem">Keine Models gefunden</p>';
+            return;
+        }
+
+        grid.innerHTML = filtered.map(m => {
+            const isEffective = effectiveModel && (m.name === effectiveModel.name && m.source === effectiveModel.source);
+            const isManual = m.name === assignedName || m.relative === assignedName;
+            const isAuto = !assignedName && autoModels.some(a => a.name === m.name && a.source === m.source);
+            let badgeHtml = '';
+            if (isManual) badgeHtml = '<span class="pick-badge pick-badge-manual">📌 Zugewiesen</span>';
+            else if (isAuto) badgeHtml = '<span class="pick-badge pick-badge-auto">🔗 Auto</span>';
+
+            const icon = m.ext === 'vrm' ? '🎭' : '🧊';
+
+            return `
+                <div class="asset-pick-item ${isEffective ? 'pick-active' : ''}" onclick="CharManager.assignModel('${m.name}')">
+                    <div class="pick-icon">${icon}</div>
+                    <div class="pick-info">
+                        <strong>${m.name}</strong>
+                        <small>${m.source} · ${(m.size / 1024 / 1024).toFixed(1)} MB</small>
+                    </div>
+                    ${badgeHtml}
+                </div>
+            `;
+        }).join('');
+    }
+
+    function filterModels() {
+        const q = document.getElementById('modelSearch').value;
+        buildModelGrid(q);
+    }
+
+    async function assignModel(modelName) {
+        if (!currentCharId) return;
+        try {
+            const res = await fetch(`/api/characters/${currentCharId}/assign`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ type: 'model', value: modelName })
+            });
+            const data = await res.json();
+            if (data.success) {
+                toast(`Model "${modelName}" zugewiesen`, 'success');
+                currentAssets.assigned_model = modelName;
+                currentAssets.resolved_model = allModels.find(m => m.name === modelName) || null;
+                currentAssets.effective_model = currentAssets.resolved_model || (currentAssets.auto_models?.[0] || null);
+                populateModelTab(currentCharId, currentAssets);
+            } else {
+                toast(data.error, 'error');
+            }
+        } catch (e) {
+            toast('Fehler: ' + e.message, 'error');
+        }
+    }
+
+    async function unassignModel() {
+        if (!currentCharId) return;
+        try {
+            const res = await fetch(`/api/characters/${currentCharId}/assign`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ type: 'model', value: null })
+            });
+            const data = await res.json();
+            if (data.success) {
+                toast('Model-Zuweisung aufgehoben', 'success');
+                currentAssets.assigned_model = null;
+                currentAssets.resolved_model = null;
+                currentAssets.effective_model = currentAssets.auto_models?.[0] || null;
+                populateModelTab(currentCharId, currentAssets);
+            }
+        } catch (e) {
+            toast('Fehler: ' + e.message, 'error');
+        }
+    }
+
+    function switchModelMode(mode) {
+        document.querySelectorAll('#tab-model .asset-mode-btn').forEach(b => b.classList.remove('active'));
+        document.querySelector(`#tab-model .asset-mode-btn[data-mode="${mode}"]`).classList.add('active');
+        document.getElementById('modelPickPanel').style.display = mode === 'pick' ? '' : 'none';
+        document.getElementById('modelUploadPanel').style.display = mode === 'upload' ? '' : 'none';
+    }
+
+    // ===== Tabs =====
+    function switchTab(tab) {
+        document.querySelectorAll('.char-tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.char-tab-content').forEach(t => t.classList.remove('active'));
+        document.querySelector(`.char-tab[data-tab="${tab}"]`).classList.add('active');
+        document.getElementById(`tab-${tab}`).classList.add('active');
+    }
+
+    // ===== Save =====
+    async function saveCharacter() {
+        if (!currentCharId) return;
+
+        const promptText = document.getElementById('cfg_system_prompt').value;
+
+        const charData = {
+            name: document.getElementById('cfg_name').value,
+            db_path: document.getElementById('cfg_db_path').value,
+            model: document.getElementById('cfg_model').value,
+            system_prompt: promptText,
+            self_username: document.getElementById('cfg_self_username').value,
+            thinking_rate: parseFloat(document.getElementById('cfg_thinking_rate').value),
+            max_history: parseInt(document.getElementById('cfg_max_history').value),
+            max_user_focus: parseInt(document.getElementById('cfg_max_user_focus').value),
+            enable_auto_memory: document.getElementById('cfg_enable_auto_memory').checked,
+            enable_pervy_guard: document.getElementById('cfg_enable_pervy_guard').checked,
+            // Preserve asset assignments
+            assigned_voice: currentAssets?.assigned_voice || null,
+            assigned_model: currentAssets?.assigned_model || null
+        };
+
+        try {
+            const res = await fetch(`/api/characters/${currentCharId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(charData)
+            });
+            const data = await res.json();
+            if (data.success) {
+                toast('Gespeichert! ✅', 'success');
+                document.getElementById('editorTitle').textContent = charData.name || currentCharId;
+                const card = document.querySelector(`.char-card[data-id="${currentCharId}"] .char-name`);
+                if (card) card.textContent = charData.name || currentCharId;
+            } else {
+                toast(data.error || 'Fehler beim Speichern', 'error');
+            }
+        } catch (e) {
+            toast('Fehler: ' + e.message, 'error');
+        }
+    }
+
+    // ===== Delete =====
+    async function deleteCharacter() {
+        if (!currentCharId) return;
+        if (!confirm(`Character "${currentCharId}" wirklich löschen?`)) return;
+
+        try {
+            const res = await fetch(`/api/characters/${currentCharId}`, { method: 'DELETE' });
+            const data = await res.json();
+            if (data.success) {
+                toast('Character gelöscht', 'success');
+                closeEditor();
+                setTimeout(() => location.reload(), 600);
+            } else {
+                toast(data.error, 'error');
+            }
+        } catch (e) {
+            toast('Fehler: ' + e.message, 'error');
+        }
+    }
+
+    // ===== File Uploads =====
+    function handleVoiceDrop(e) {
+        e.preventDefault();
+        e.currentTarget.classList.remove('drag-over');
+        const file = e.dataTransfer.files[0];
+        if (file) uploadVoice(file);
+    }
+
+    function handleModelDrop(e) {
+        e.preventDefault();
+        e.currentTarget.classList.remove('drag-over');
+        const file = e.dataTransfer.files[0];
+        if (file) uploadModel(file);
+    }
+
+    async function uploadVoice(file) {
+        if (!currentCharId || !file) return;
+        const formData = new FormData();
+        formData.append('voice', file);
+        try {
+            toast('Voice wird hochgeladen...', 'info');
+            const res = await fetch(`/api/characters/${currentCharId}/voice`, { method: 'POST', body: formData });
+            const data = await res.json();
+            if (data.success) {
+                toast('Voice hochgeladen!', 'success');
+                setTimeout(() => location.reload(), 800);
+            } else {
+                toast(data.error, 'error');
+            }
+        } catch (e) {
+            toast('Upload-Fehler: ' + e.message, 'error');
+        }
+    }
+
+    async function uploadModel(file) {
+        if (!currentCharId || !file) return;
+        const formData = new FormData();
+        formData.append('model', file);
+        try {
+            toast('Model wird hochgeladen...', 'info');
+            const res = await fetch(`/api/characters/${currentCharId}/model`, { method: 'POST', body: formData });
+            const data = await res.json();
+            if (data.success) {
+                toast('Model hochgeladen!', 'success');
+                setTimeout(() => location.reload(), 800);
+            } else {
+                toast(data.error, 'error');
+            }
+        } catch (e) {
+            toast('Upload-Fehler: ' + e.message, 'error');
+        }
+    }
+
+    // ===== Overview Tab =====
+    function updateOverview(charId, cfg, assets) {
+        // Chat
+        const chatEl = document.getElementById('overviewChat');
+        chatEl.innerHTML = `
+            <div class="overview-item"><span>Name:</span> <strong>${cfg.name || '–'}</strong></div>
+            <div class="overview-item"><span>LLM Model:</span> <strong>${cfg.model || '–'}</strong></div>
+            <div class="overview-item"><span>Thinking Rate:</span> <strong>${cfg.thinking_rate ?? '–'}</strong></div>
+            <div class="overview-item"><span>Max History:</span> <strong>${cfg.max_history ?? '–'}</strong></div>
+            <div class="overview-item"><span>Auto Memory:</span> <strong>${cfg.enable_auto_memory ? '✅' : '❌'}</strong></div>
+        `;
+
+        // Voice
+        const voiceEl = document.getElementById('overviewVoice');
+        const ev = assets.effective_voice;
+        if (ev) {
+            const src = assets.assigned_voice ? '📌 Manuell' : '🔗 Auto';
+            voiceEl.innerHTML = `
+                <div class="overview-item"><span>Datei:</span> <strong>${ev.name}</strong></div>
+                <div class="overview-item"><span>Größe:</span> <strong>${(ev.size / 1024).toFixed(1)} KB</strong></div>
+                <div class="overview-item"><span>Quelle:</span> <strong>${src}</strong></div>
+            `;
+        } else {
+            voiceEl.innerHTML = '<p class="text-muted">Keine Voice</p>';
+        }
+
+        // Model
+        const modelEl = document.getElementById('overviewModel');
+        const em = assets.effective_model;
+        if (em) {
+            const src = assets.assigned_model ? '📌 Manuell' : '🔗 Auto';
+            modelEl.innerHTML = `
+                <div class="overview-item"><span>Datei:</span> <strong>${em.name}</strong></div>
+                <div class="overview-item"><span>Ordner:</span> <strong>${em.source || '–'}</strong></div>
+                <div class="overview-item"><span>Größe:</span> <strong>${(em.size / 1024 / 1024).toFixed(1)} MB</strong></div>
+                <div class="overview-item"><span>Quelle:</span> <strong>${src}</strong></div>
+            `;
+        } else {
+            modelEl.innerHTML = '<p class="text-muted">Kein Model</p>';
+        }
+
+        // Files
+        const filesEl = document.getElementById('overviewFiles');
+        const autoV = assets.auto_voice;
+        const autoM = assets.auto_models?.length > 0;
+        filesEl.innerHTML = `
+            <div class="overview-file">
+                <span class="file-type">💬</span> ki_chat/characters/${charId}.json 
+                <span class="file-status exists">✅ vorhanden</span>
+            </div>
+            <div class="overview-file">
+                <span class="file-type">🎙️</span> textToSpeech/voices/${charId}.*
+                <span class="file-status ${autoV ? 'exists' : 'missing'}">${autoV ? '✅ Auto-Match' : '❌ kein Auto-Match'}</span>
+            </div>
+            <div class="overview-file">
+                <span class="file-type">🧊</span> web_avatar/models/${charId}.*
+                <span class="file-status ${autoM ? 'exists' : 'missing'}">${autoM ? '✅ Auto-Match' : '❌ kein Auto-Match'}</span>
+            </div>
+            ${assets.assigned_voice ? `<div class="overview-file"><span class="file-type">📌</span> Voice Zuweisung: <strong>${assets.assigned_voice}</strong></div>` : ''}
+            ${assets.assigned_model ? `<div class="overview-file"><span class="file-type">📌</span> Model Zuweisung: <strong>${assets.assigned_model}</strong></div>` : ''}
+        `;
+    }
+
+    // ===== Toast =====
+    function toast(msg, type = 'info') {
+        const el = document.getElementById('charToast');
+        el.textContent = msg;
+        el.className = `char-toast toast-${type}`;
+        el.style.display = 'block';
+        setTimeout(() => { el.style.display = 'none'; }, 3000);
+    }
+
+    return {
+        showCreateDialog, closeCreateDialog, createCharacter,
+        openEditor, closeEditor, switchTab,
+        saveCharacter, deleteCharacter,
+        assignVoice, unassignVoice, switchVoiceMode, filterVoices,
+        assignModel, unassignModel, switchModelMode, filterModels,
+        handleVoiceDrop, handleModelDrop,
+        uploadVoice, uploadModel, toast
+    };
+})();
+</script>
+{% endblock %}

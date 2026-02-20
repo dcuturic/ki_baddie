@@ -161,6 +161,7 @@ HAS_RUBBERBAND = bool(HAS_RUBBERBAND_PY and HAS_RUBBERBAND_CLI)
 
 
 def set_repro_seed(seed: int):
+    """Set reproducible seed — MUST be called under TTS_SYNTH_LOCK to avoid race conditions."""
     seed = int(seed) & 0xFFFFFFFF
     random.seed(seed)
     np.random.seed(seed)
@@ -890,7 +891,7 @@ def sanitize_audio(wav: np.ndarray) -> np.ndarray:
 
 def resolve_emotion_key(emotion: str) -> str:
     e = (emotion or "").strip().lower()
-    if e in ():
+    if not e:
         e = DEFAULT_EMOTION
     if e in EMOTION_WAVS:
         return e
@@ -966,7 +967,7 @@ if TTS_DEVICE.startswith("cuda"):
 print("[FX] HAS_RUBBERBAND_PY:", HAS_RUBBERBAND_PY, "HAS_RUBBERBAND_CLI:", HAS_RUBBERBAND_CLI, "USING_RUBBERBAND:", HAS_RUBBERBAND)
 
 
-def synthesize_wav_f32(text: str, emotion: str, tuning: dict | None = None, voice: str | None = None):
+def synthesize_wav_f32(text: str, emotion: str, tuning: dict | None = None, voice: str | None = None, seed: int | None = None):
     emotion_key = resolve_emotion_key(emotion)
 
     # Voice override: use voices/<voice>.wav for ALL emotions when specified
@@ -982,6 +983,9 @@ def synthesize_wav_f32(text: str, emotion: str, tuning: dict | None = None, voic
         ref = EMOTION_WAVS.get(emotion_key, EMOTION_WAVS[DEFAULT_EMOTION])
 
     with TTS_SYNTH_LOCK:
+        # Apply seed under lock to avoid race conditions with concurrent requests
+        if seed is not None:
+            set_repro_seed(seed)
         try:
             wav = tts_model.tts(text=text, speaker_wav=ref, language=LANGUAGE)
         except Exception as synth_err:
@@ -1114,9 +1118,9 @@ def play_audio_blocking(wav_f32: np.ndarray, sr: int, emotion: str):
             pass
 
 
-def speak_task(text: str, save_wav: bool, play_audio: bool, wav_path: str | None, emotion: str, tuning: dict | None, voice: str | None = None):
+def speak_task(text: str, save_wav: bool, play_audio: bool, wav_path: str | None, emotion: str, tuning: dict | None, voice: str | None = None, seed: int | None = None):
     try:
-        wav_f32, sr, ch, used_emotion, ref, backend = synthesize_wav_f32(text, emotion, tuning=tuning, voice=voice)
+        wav_f32, sr, ch, used_emotion, ref, backend = synthesize_wav_f32(text, emotion, tuning=tuning, voice=voice, seed=seed)
 
         if save_wav:
             if not wav_path:
@@ -1219,12 +1223,12 @@ def _tts_inner():
     if seed is not None:
         try:
             seed = int(seed)
-            set_repro_seed(seed)
         except Exception:
             seed = None
+    # Note: seed is applied inside TTS_SYNTH_LOCK in synthesize_wav_f32()
 
     text_raw = payload.get("text") or ""
-    emotion = payload.get("emotion") or payload.get("emotion") or"neutral"
+    emotion = payload.get("emotion") or payload.get("mood") or "neutral"
 
     if isinstance(text_raw, dict) and "value" in text_raw:
         if isinstance(text_raw, dict) and "emotion" in text_raw:
@@ -1247,11 +1251,22 @@ def _tts_inner():
     save_wav = bool(payload.get("save_wav", False))
     play_audio = bool(payload.get("play_audio", True))
     wav_path = payload.get("wav_path")
+
+    # Sanitize wav_path to prevent path traversal
+    if wav_path:
+        wav_path = str(wav_path)
+        # Reject absolute paths and directory traversal
+        if os.path.isabs(wav_path) or ".." in wav_path:
+            return jsonify({"ok": False, "error": "Invalid wav_path: absolute paths and '..' are not allowed"}), 400
+        # Confine to a safe output directory
+        wav_path = os.path.join("output", os.path.basename(wav_path))
+        os.makedirs("output", exist_ok=True)
+
     return_wav = bool(payload.get("return_wav", False))
 
     if return_wav:
         try:
-            wav_f32, sr, ch, used_emotion, ref, backend = synthesize_wav_f32(text, emotion, tuning=tuning, voice=voice)
+            wav_f32, sr, ch, used_emotion, ref, backend = synthesize_wav_f32(text, emotion, tuning=tuning, voice=voice, seed=seed)
             pcm16 = float32_to_int16(wav_f32)
             wav_bytes = pcm16_to_wav_bytes(pcm16, sr, ch)
 
@@ -1274,7 +1289,7 @@ def _tts_inner():
 
     threading.Thread(
         target=speak_task,
-        args=(text, save_wav, play_audio, wav_path, emotion, tuning, voice),
+        args=(text, save_wav, play_audio, wav_path, emotion, tuning, voice, seed),
         daemon=True
     ).start()
 

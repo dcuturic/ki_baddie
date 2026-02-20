@@ -23,14 +23,18 @@
     <div class="config-selector">
         <h3>Services der Instanz</h3>
         <div class="config-list">
+            <div class="config-item active" onclick="selectGlobalSettings(event)">
+                <span class="config-icon">⚡</span>
+                <span class="config-name">Globale Einstellungen</span>
+            </div>
             {% if services|length == 0 %}
-            <div class="config-item active">
+            <div class="config-item">
                 <span class="config-icon">❌</span>
                 <span class="config-name">Keine Services konfiguriert</span>
             </div>
             {% else %}
             {% for service_id, service in services.items() %}
-            <div class="config-item {% if loop.first %}active{% endif %}" onclick="selectService('{{ service_id }}', event)">
+            <div class="config-item" onclick="selectService('{{ service_id }}', event)">
                 <span class="config-icon">{{ service.icon or '⚙️' }}</span>
                 <span class="config-name">{{ service.name or service_id }}</span>
             </div>
@@ -48,6 +52,7 @@
                     <button id="btn-ic-mode-expert" class="btn btn-secondary" onclick="switchICMode('expert')">Expert</button>
                 </div>
                 <button class="btn btn-secondary" onclick="reloadCurrentServiceConfig()">🔄 Neu laden</button>
+                <button class="btn btn-secondary" onclick="showConfigDiff()">📝 Diff</button>
                 <button class="btn btn-success" onclick="saveCurrentServiceConfig()">💾 Speichern</button>
             </div>
         </div>
@@ -98,6 +103,8 @@ let currentServiceId = null;
 let icMode = 'simple';  // 'simple' or 'expert'
 let icCurrentConfig = {};  // parsed config for current service
 var usedAudioRegistry = {};  // audio conflict registry
+let icAllConfigs = {};  // all service configs for global settings panel
+let icGlobalActive = false;  // whether the global settings panel is active
 
 async function initializeInstanceConfig() {
     const editor = document.getElementById('config-editor');
@@ -111,6 +118,9 @@ async function initializeInstanceConfig() {
 
     // Load Ollama models for model dropdown
     await loadOllamaModels();
+
+    // Load characters for character select dropdown
+    await loadCharactersList();
 
     // Load audio conflict registry
     try {
@@ -127,25 +137,111 @@ async function initializeInstanceConfig() {
         console.warn('Could not load audio registry:', e);
     }
 
-    const firstServiceItem = document.querySelector('.config-item[onclick*="selectService"]');
-    if (firstServiceItem) {
-        const onclickValue = firstServiceItem.getAttribute('onclick') || '';
-        const match = onclickValue.match(/selectService\('([^']+)'/);
-        if (match && match[1]) {
-            await loadServiceConfig(match[1], firstServiceItem);
-        }
-    }
+    // Start with Global Settings active
+    await selectGlobalSettings(null);
 }
 
 async function selectService(serviceId, event) {
     const clickedItem = event && event.currentTarget ? event.currentTarget : null;
+    icGlobalActive = false;
     await loadServiceConfig(serviceId, clickedItem);
+}
+
+async function selectGlobalSettings(event) {
+    icGlobalActive = true;
+    currentServiceId = null;
+
+    // Highlight sidebar
+    document.querySelectorAll('.config-item').forEach(item => item.classList.remove('active'));
+    const clickedItem = event && event.currentTarget ? event.currentTarget :
+        document.querySelector('.config-item');
+    if (clickedItem) clickedItem.classList.add('active');
+
+    // Hide expert editor, show simple container
+    const simpleContainer = document.getElementById('ic-simple-container');
+    const editorBody = simpleContainer.nextElementSibling;
+    simpleContainer.style.display = '';
+    editorBody.style.display = 'none';
+
+    // Update header
+    document.getElementById('editor-title').textContent = '⚡ Globale Einstellungen';
+    document.getElementById('service-id').textContent = 'global';
+    document.getElementById('config-path').textContent = 'Alle Services';
+
+    // Hide mode toggle buttons (global is always simple)
+    document.getElementById('btn-ic-mode-simple').style.display = 'none';
+    document.getElementById('btn-ic-mode-expert').style.display = 'none';
+
+    // Load all configs from server
+    simpleContainer.innerHTML = '<p style="color:var(--text-muted);">⏳ Lade alle Service-Configs...</p>';
+    try {
+        const result = await apiCall(`/api/instance/${encodeURIComponent(currentInstanceName)}/config/all`);
+        icAllConfigs = result.configs || {};
+    } catch (e) {
+        simpleContainer.innerHTML = `<p style="color:var(--accent-danger);">❌ Fehler: ${e.message}</p>`;
+        return;
+    }
+
+    renderICGlobal();
+}
+
+function renderICGlobal() {
+    const container = document.getElementById('ic-simple-container');
+    if (!container) return;
+
+    const globalHtml = buildGlobalSettingsHtml(icAllConfigs, 'icGlobalFieldChanged');
+    container.innerHTML = `
+        <div style="border:2px solid var(--accent-primary); border-radius:10px; padding:1.2rem 1.5rem; background:linear-gradient(135deg, rgba(168,85,247,0.08), rgba(59,130,246,0.06));">
+            <div style="margin-bottom:1rem;">
+                <h4 style="margin:0 0 0.3rem 0; color:var(--accent-primary);">⚡ Globale Einstellungen</h4>
+                <small style="color:var(--text-muted);">Einmal setzen – wird automatisch in alle Service-Configs übernommen</small>
+            </div>
+            <div style="display:grid; gap:0.3rem;">
+                ${globalHtml}
+            </div>
+        </div>`;
+}
+
+async function icGlobalFieldChanged(fieldId, value, _onChangeFn) {
+    // Call backend to apply global change across all service configs
+    try {
+        const result = await apiCall(`/api/instance/${encodeURIComponent(currentInstanceName)}/apply-global`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ field_id: fieldId, value: value })
+        });
+
+        if (result.success) {
+            const count = (result.updated_services || []).length;
+            const svcs = (result.updated_services || []).join(', ');
+            showNotification(`✅ ${fieldId} aktualisiert → ${count} Service${count !== 1 ? 's' : ''}: ${svcs}`, 'success');
+
+            // Reload all configs to reflect changes
+            try {
+                const refreshed = await apiCall(`/api/instance/${encodeURIComponent(currentInstanceName)}/config/all`);
+                icAllConfigs = refreshed.configs || {};
+                renderICGlobal();
+            } catch (e) {
+                console.warn('Could not refresh configs:', e);
+            }
+        } else {
+            showNotification(`❌ ${result.error || 'Fehler'}`, 'error');
+        }
+    } catch (e) {
+        showNotification(`❌ Netzwerkfehler: ${e.message}`, 'error');
+    }
 }
 
 async function loadServiceConfig(serviceId, selectedElement = null) {
     if (!serviceId) return;
 
     if (!confirmDiscardChanges()) return;
+
+    icGlobalActive = false;
+
+    // Restore mode toggle buttons (hidden in global mode)
+    document.getElementById('btn-ic-mode-simple').style.display = '';
+    document.getElementById('btn-ic-mode-expert').style.display = '';
 
     document.querySelectorAll('.config-item').forEach(item => item.classList.remove('active'));
     if (selectedElement) selectedElement.classList.add('active');
@@ -156,6 +252,7 @@ async function loadServiceConfig(serviceId, selectedElement = null) {
 
         currentServiceId = serviceId;
         icCurrentConfig = JSON.parse(JSON.stringify(cfg));  // deep copy
+        icOriginalConfig = JSON.parse(JSON.stringify(cfg)); // store original for diff
         document.getElementById('service-id').textContent = serviceId;
         document.getElementById('config-path').textContent = result.config_path || '--';
         document.getElementById('editor-title').textContent = `${serviceId} Config`;
@@ -170,6 +267,7 @@ async function loadServiceConfig(serviceId, selectedElement = null) {
 }
 
 function switchICMode(mode) {
+    if (icGlobalActive) return;  // global mode has no expert view
     icMode = mode;
     const btnSimple = document.getElementById('btn-ic-mode-simple');
     const btnExpert = document.getElementById('btn-ic-mode-expert');
@@ -265,12 +363,20 @@ function confirmDiscardChanges() {
 }
 
 async function reloadCurrentServiceConfig() {
+    if (icGlobalActive) {
+        await selectGlobalSettings(null);
+        return;
+    }
     if (!currentServiceId) return;
     const active = document.querySelector('.config-item.active');
     await loadServiceConfig(currentServiceId, active);
 }
 
 async function saveCurrentServiceConfig() {
+    if (icGlobalActive) {
+        showNotification('ℹ️ Globale Einstellungen werden sofort beim Ändern gespeichert', 'info');
+        return;
+    }
     if (!currentServiceId) {
         showNotification('❌ Kein Service ausgewählt', 'error');
         return;
@@ -298,13 +404,80 @@ async function saveCurrentServiceConfig() {
 
         if (result && result.success) {
             showNotification(`✅ ${currentServiceId} Config gespeichert`, 'success');
-            icCurrentConfig = JSON.parse(JSON.stringify(parsed));  // sync
+            icOriginalConfig = JSON.parse(JSON.stringify(parsed));  // update original
+            icCurrentConfig = JSON.parse(JSON.stringify(parsed));   // sync
         } else {
             showNotification(`❌ ${result.error || 'Speichern fehlgeschlagen'}`, 'error');
         }
     } catch (error) {
         showNotification(`❌ ${error.message}`, 'error');
     }
+}
+
+// Config Diff View — compare original vs current
+let icOriginalConfig = {};
+
+function showConfigDiff() {
+    if (!currentServiceId) {
+        showNotification('Kein Service ausgewählt', 'warning');
+        return;
+    }
+
+    let current;
+    if (icMode === 'simple') {
+        current = icCurrentConfig;
+    } else {
+        try {
+            current = JSON.parse(document.getElementById('config-editor').value);
+        } catch(e) {
+            showNotification('JSON ungültig — Diff nicht möglich', 'error');
+            return;
+        }
+    }
+
+    const origStr = JSON.stringify(icOriginalConfig, null, 2).split('\n');
+    const currStr = JSON.stringify(current, null, 2).split('\n');
+    const maxLen = Math.max(origStr.length, currStr.length);
+
+    let diffHtml = '';
+    let hasChanges = false;
+    for (let i = 0; i < maxLen; i++) {
+        const orig = origStr[i] || '';
+        const curr = currStr[i] || '';
+        if (orig === curr) {
+            diffHtml += `<div style="color:var(--text-muted);font-family:monospace;font-size:0.82rem;padding:1px 0.5rem;">&nbsp; ${escapeHtml(orig)}</div>`;
+        } else {
+            hasChanges = true;
+            if (orig) diffHtml += `<div style="color:#ef4444;background:rgba(239,68,68,0.08);font-family:monospace;font-size:0.82rem;padding:1px 0.5rem;">- ${escapeHtml(orig)}</div>`;
+            if (curr) diffHtml += `<div style="color:#10b981;background:rgba(16,185,129,0.08);font-family:monospace;font-size:0.82rem;padding:1px 0.5rem;">+ ${escapeHtml(curr)}</div>`;
+        }
+    }
+
+    if (!hasChanges) {
+        showNotification('Keine Änderungen', 'info');
+        return;
+    }
+
+    // Show diff in overlay
+    let overlay = document.getElementById('diff-overlay');
+    if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.id = 'diff-overlay';
+        overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;';
+        overlay.onclick = (e) => { if (e.target === overlay) overlay.style.display = 'none'; };
+        document.body.appendChild(overlay);
+    }
+    overlay.innerHTML = `
+        <div style="background:var(--bg-secondary);border:1px solid var(--border-color);border-radius:12px;padding:1.5rem;max-width:700px;width:90%;max-height:80vh;overflow:auto;box-shadow:var(--shadow-lg);">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
+                <h3 style="color:var(--text-primary);margin:0;">📝 Config Diff — ${currentServiceId}</h3>
+                <button onclick="document.getElementById('diff-overlay').style.display='none'" style="background:none;border:none;color:var(--text-muted);font-size:1.3rem;cursor:pointer;">×</button>
+            </div>
+            <div style="border:1px solid var(--border-color);border-radius:8px;overflow:auto;max-height:60vh;background:var(--bg-primary);padding:0.5rem 0;">
+                ${diffHtml}
+            </div>
+        </div>`;
+    overlay.style.display = 'flex';
 }
 
 function validateConfigJSON() {

@@ -8,6 +8,7 @@ import json
 import os
 import sys
 import io
+import copy
 import subprocess
 import psutil
 import threading
@@ -17,6 +18,7 @@ import traceback
 import atexit
 import shlex
 import shutil
+import re
 import urllib.request
 import urllib.error
 import urllib.parse
@@ -39,7 +41,7 @@ except Exception:
     except Exception:
         pass
 
-from flask import Flask, render_template, request, jsonify, send_from_directory
+from flask import Flask, render_template, request, jsonify, send_from_directory, Response
 
 # ============================================================================
 # Configuration and Setup
@@ -47,13 +49,34 @@ from flask import Flask, render_template, request, jsonify, send_from_directory
 
 app = Flask(__name__, template_folder='templates', static_folder='static')
 app.config['JSON_SORT_KEYS'] = False
+app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024  # 500 MB max upload
 app.json.ensure_ascii = False
 
-# Logging configuration
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+# Logging configuration — structured JSON formatter
+class StructuredFormatter(logging.Formatter):
+    """JSON log formatter for structured logging."""
+    def format(self, record):
+        log_data = {
+            'timestamp': self.formatTime(record, self.datefmt),
+            'level': record.levelname,
+            'logger': record.name,
+            'message': record.getMessage(),
+        }
+        if record.exc_info and record.exc_info[0]:
+            log_data['exception'] = self.formatException(record.exc_info)
+        return json.dumps(log_data, ensure_ascii=False)
+
+# Use structured logging if LOG_FORMAT=json, otherwise standard format
+_log_format = os.environ.get('LOG_FORMAT', 'standard')
+if _log_format == 'json':
+    _handler = logging.StreamHandler()
+    _handler.setFormatter(StructuredFormatter())
+    logging.basicConfig(level=logging.INFO, handlers=[_handler])
+else:
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    )
 logger = logging.getLogger(__name__)
 
 MANAGER_ROOT = Path(__file__).parent
@@ -62,6 +85,53 @@ INSTANCES_DIR = MANAGER_ROOT / 'instances'
 INSTANCE_SERVICE_CONFIGS_DIR = MANAGER_ROOT / 'instance_service_configs'
 CONFIG_FILE = MANAGER_ROOT / 'config.json'
 RUNNING_PIDS_FILE = MANAGER_ROOT / 'running_pids.json'
+
+
+# ============================================================================
+# Simple Rate Limiter (in-memory, per-IP)
+# ============================================================================
+
+class RateLimiter:
+    """Simple in-memory sliding window rate limiter."""
+
+    def __init__(self, max_requests: int = 60, window_seconds: int = 60):
+        self.max_requests = max_requests
+        self.window = window_seconds
+        self._hits: Dict[str, list] = {}
+        self._lock = threading.Lock()
+
+    def is_allowed(self, key: str) -> bool:
+        now = time.time()
+        cutoff = now - self.window
+        with self._lock:
+            hits = self._hits.setdefault(key, [])
+            # Prune old entries
+            self._hits[key] = [t for t in hits if t > cutoff]
+            if len(self._hits[key]) >= self.max_requests:
+                return False
+            self._hits[key].append(now)
+            return True
+
+    def remaining(self, key: str) -> int:
+        now = time.time()
+        cutoff = now - self.window
+        with self._lock:
+            hits = [t for t in self._hits.get(key, []) if t > cutoff]
+            return max(0, self.max_requests - len(hits))
+
+
+_rate_limiter = RateLimiter(max_requests=120, window_seconds=60)
+
+
+@app.before_request
+def _check_rate_limit():
+    """Apply rate limiting to mutating API endpoints."""
+    if request.path.startswith('/api/') and request.method in ('POST', 'PUT', 'DELETE', 'PATCH'):
+        client_ip = request.remote_addr or '0.0.0.0'
+        if not _rate_limiter.is_allowed(client_ip):
+            logger.warning(f"Rate limit exceeded for {client_ip} on {request.path}")
+            return jsonify({'success': False, 'error': 'Zu viele Anfragen — bitte warte kurz'}), 429
+
 
 # ============================================================================
 # Data Classes
@@ -1971,6 +2041,61 @@ def api_virtual_audio_list():
 # API Endpoints - Status and Logs (Global)
 # ============================================================================
 
+@app.route('/api/health', methods=['GET'])
+def api_health():
+    """Global health-check: ping all service ports and return latency."""
+    try:
+        instance_name = request.args.get('instance', default=pm.current_instance, type=str)
+        all_services = pm.config.get('services', {})
+        results = {}
+        for service_id, service_cfg in all_services.items():
+            raw_path = pm._resolve_service_raw_path(service_cfg.get('path', ''))
+            port = pm._resolve_service_port(service_cfg, raw_path)
+            if not port:
+                results[service_id] = {'reachable': False, 'error': 'no port configured'}
+                continue
+            try:
+                start = time.time()
+                req = urllib.request.Request(f"http://127.0.0.1:{port}/", method='GET')
+                with urllib.request.urlopen(req, timeout=3) as resp:
+                    latency_ms = round((time.time() - start) * 1000, 1)
+                    results[service_id] = {'reachable': True, 'latency_ms': latency_ms, 'status_code': resp.status}
+            except urllib.error.URLError:
+                results[service_id] = {'reachable': False, 'latency_ms': None}
+            except Exception as e:
+                results[service_id] = {'reachable': False, 'error': str(e)}
+        return jsonify({'success': True, 'health': results})
+    except Exception as e:
+        logger.error(f"API error (health): {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/health/<service_id>', methods=['GET'])
+def api_health_service(service_id):
+    """Health-check a single service by pinging its port."""
+    try:
+        service_cfg = pm.config.get('services', {}).get(service_id)
+        if not service_cfg:
+            return jsonify({'success': False, 'error': 'Service not found'}), 404
+        raw_path = pm._resolve_service_raw_path(service_cfg.get('path', ''))
+        port = pm._resolve_service_port(service_cfg, raw_path)
+        if not port:
+            return jsonify({'success': True, 'reachable': False, 'error': 'no port configured'})
+        try:
+            start = time.time()
+            req = urllib.request.Request(f"http://127.0.0.1:{port}/", method='GET')
+            with urllib.request.urlopen(req, timeout=3) as resp:
+                latency_ms = round((time.time() - start) * 1000, 1)
+                return jsonify({'success': True, 'reachable': True, 'latency_ms': latency_ms, 'status_code': resp.status})
+        except urllib.error.URLError:
+            return jsonify({'success': True, 'reachable': False, 'latency_ms': None})
+        except Exception as e:
+            return jsonify({'success': True, 'reachable': False, 'error': str(e)})
+    except Exception as e:
+        logger.error(f"API error (health_service): {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 @app.route('/api/status/all', methods=['GET'])
 def api_get_all_statuses():
     """Get all service statuses."""
@@ -2140,7 +2265,7 @@ def api_set_current_instance(instance_name):
 
 @app.route('/api/instance/start/<instance_name>', methods=['POST'])
 def api_start_instance(instance_name):
-    """Start an instance (launches auto-start services)."""
+    """Start an instance (launches auto-start services in dependency order)."""
     try:
         instance = get_instance(instance_name)
         if not instance:
@@ -2149,26 +2274,46 @@ def api_start_instance(instance_name):
         # Set as current instance
         pm.current_instance = instance_name
         
-        # Start auto-start services
+        # Service dependency order: providers first, then consumers
+        SERVICE_START_ORDER = [
+            'ollama',         # LLM backend — no dependencies
+            'ki_chat',        # depends on ollama
+            'web_avatar',     # standalone
+            'vroid_emotion',  # depends on web_avatar
+            'vroid_poser',    # depends on web_avatar
+            'text_to_speech', # depends on vroid_emotion, main_server
+            'main_server',    # depends on ki_chat, text_to_speech, vroid_poser, vroid_emotion
+        ]
+        
+        # Collect auto-start services
+        services_config = instance.get('services', {})
+        auto_start_ids = [
+            sid for sid, settings in services_config.items()
+            if settings.get('enabled', False) and settings.get('auto_start', False)
+        ]
+        
+        # Sort by dependency order, unknown services go last
+        order_map = {sid: i for i, sid in enumerate(SERVICE_START_ORDER)}
+        auto_start_ids.sort(key=lambda sid: order_map.get(sid, 999))
+        
         started_services = []
         failed_services = []
         
-        services_config = instance.get('services', {})
-        for service_id, service_settings in services_config.items():
-            if service_settings.get('enabled', False) and service_settings.get('auto_start', False):
-                result = pm.start_service(service_id, instance_name)
-                if result.get('success'):
-                    started_services.append(service_id)
-                    logger.info(f"Started auto-start service: {service_id}")
-                else:
-                    failed_services.append(service_id)
-                    logger.warning(f"Failed to start: {service_id}")
+        for service_id in auto_start_ids:
+            result = pm.start_service(service_id, instance_name)
+            if result.get('success'):
+                started_services.append(service_id)
+                logger.info(f"Started auto-start service: {service_id}")
+            else:
+                failed_services.append(service_id)
+                logger.warning(f"Failed to start: {service_id}")
         
         return jsonify({
             'success': True,
             'instance': instance_name,
             'started': started_services,
             'failed': failed_services,
+            'start_order': auto_start_ids,
             'message': f'Started {len(started_services)} auto-start services'
         }), 200
         
@@ -2224,6 +2369,51 @@ def api_get_instance(instance_name):
         
     except Exception as e:
         logger.error(f"API error (get_instance): {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/instance/clone/<instance_name>', methods=['POST'])
+def api_clone_instance(instance_name):
+    """Clone an instance with all its service configs."""
+    try:
+        instance = get_instance(instance_name)
+        if not instance:
+            return jsonify({'success': False, 'error': 'Instance not found'}), 404
+
+        data = request.get_json() or {}
+        new_name = data.get('new_name', '').strip()
+        if not new_name:
+            # Auto-generate name
+            base = instance.get('name', instance_name)
+            new_name = f"{base} (Kopie)"
+        new_filename = re.sub(r'[^a-zA-Z0-9_\-]', '_', new_name.lower()).strip('_')
+        if not new_filename:
+            new_filename = f"{instance_name}_copy"
+
+        # Check if already exists
+        if get_instance(new_filename):
+            return jsonify({'success': False, 'error': f'Instanz "{new_filename}" existiert bereits'}), 409
+
+        # Clone instance data
+        cloned = copy.deepcopy(instance)
+        cloned['name'] = new_name
+
+        if not save_instance(new_filename, cloned):
+            return jsonify({'success': False, 'error': 'Fehler beim Speichern der Instanz'}), 500
+
+        # Clone service configs
+        src_dir = INSTANCE_SERVICE_CONFIGS_DIR / instance_name
+        dst_dir = INSTANCE_SERVICE_CONFIGS_DIR / new_filename
+        if src_dir.exists():
+            shutil.copytree(str(src_dir), str(dst_dir), dirs_exist_ok=True)
+
+        return jsonify({
+            'success': True,
+            'message': f'Instanz geklont als "{new_name}"',
+            'new_filename': new_filename,
+        })
+    except Exception as e:
+        logger.error(f"API error (clone_instance): {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 # ============================================================================
@@ -2291,6 +2481,35 @@ def api_service_logs(service_id):
         logger.error(f"API error (service_logs): {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
+
+@app.route('/api/stream/logs/<service_id>')
+def api_stream_logs(service_id):
+    """SSE endpoint for live log streaming from a service."""
+    instance = request.args.get('instance', default=pm.current_instance, type=str)
+
+    def generate():
+        last_count = 0
+        while True:
+            processes = pm._all_processes.get(instance, {})
+            sp = processes.get(service_id)
+            if sp and sp.log_buffer:
+                buf = list(sp.log_buffer)
+                current_count = len(buf)
+                if current_count > last_count:
+                    new_lines = buf[last_count:]
+                    for line in new_lines:
+                        yield f"data: {json.dumps({'line': line, 'service': service_id})}\n\n"
+                    last_count = current_count
+                elif current_count < last_count:
+                    # Buffer was reset
+                    for line in buf:
+                        yield f"data: {json.dumps({'line': line, 'service': service_id})}\n\n"
+                    last_count = current_count
+            time.sleep(0.5)
+
+    return Response(generate(), mimetype='text/event-stream',
+                    headers={'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no'})
+
 @app.route('/api/instance/<instance_name>/service/<service_id>/<config_key>', methods=['POST'])
 def api_update_service_config(instance_name, service_id, config_key):
     """Update service configuration for an instance."""
@@ -2316,6 +2535,31 @@ def api_update_service_config(instance_name, service_id, config_key):
         return jsonify({'success': True, 'message': f'{config_key} updated to {value}'}), 200
     except Exception as e:
         logger.error(f"API error (update_service_config): {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/instance/<instance_name>/config/all', methods=['GET'])
+def api_get_instance_all_configs(instance_name):
+    """Load all service configs for an instance (used by Global Settings panel)."""
+    try:
+        instance = get_instance(instance_name)
+        if not instance:
+            return jsonify({'success': False, 'error': 'Instance not found'}), 404
+
+        all_services = pm.config.get('services', {})
+        if instance.get('services'):
+            service_ids = list(instance['services'].keys())
+        else:
+            service_ids = list(all_services.keys())
+
+        configs = {}
+        for sid in service_ids:
+            cfg = load_instance_service_runtime_config(instance_name, sid)
+            if cfg is not None:
+                configs[sid] = cfg
+
+        return jsonify({'success': True, 'configs': configs})
+    except Exception as e:
+        logger.error(f"API error (get_all_configs): {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/instance/<instance_name>/config/service/<service_id>', methods=['GET'])
@@ -2398,6 +2642,56 @@ def api_save_service_config(service_id):
         return jsonify({'success': False, 'error': 'Failed to save config'}), 500
     except Exception as e:
         logger.error(f"API error (save_service_config): {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# Expected top-level config keys per service (for validation)
+_CONFIG_SCHEMAS = {
+    'ki_chat': {'required': ['ollama'], 'optional': ['server', 'default_character', 'max_history']},
+    'main_server': {'required': ['server'], 'optional': ['services', 'microphone', 'hotkeys']},
+    'text_to_speech': {'required': ['server'], 'optional': ['emotions', 'tts', 'voicemod', 'services']},
+    'vroid_poser': {'required': ['server'], 'optional': ['osc', 'services']},
+    'vroid_emotion': {'required': ['server'], 'optional': ['osc', 'services']},
+    'web_avatar': {'required': ['server'], 'optional': ['vrm', 'osc']},
+    'ollama': {'required': [], 'optional': ['server']},
+}
+
+
+@app.route('/api/config/validate', methods=['POST'])
+def api_validate_config():
+    """Validate a service config against expected schema keys.
+    Body: { service_id: str, config: dict }
+    """
+    try:
+        data = request.get_json() or {}
+        service_id = data.get('service_id', '')
+        config = data.get('config')
+        if not isinstance(config, dict):
+            return jsonify({'success': False, 'error': 'config must be an object'}), 400
+
+        schema = _CONFIG_SCHEMAS.get(service_id)
+        warnings = []
+        errors = []
+
+        if schema:
+            for key in schema['required']:
+                if key not in config:
+                    errors.append(f"Pflichtfeld '{key}' fehlt")
+            known_keys = set(schema['required'] + schema['optional'])
+            for key in config:
+                if key not in known_keys:
+                    warnings.append(f"Unbekannter Key '{key}'")
+        else:
+            warnings.append(f"Kein Schema für Service '{service_id}' — nur JSON-Validität geprüft")
+
+        return jsonify({
+            'success': True,
+            'valid': len(errors) == 0,
+            'errors': errors,
+            'warnings': warnings,
+        })
+    except Exception as e:
+        logger.error(f"API error (validate_config): {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
@@ -2495,6 +2789,605 @@ def api_service_proxy(service_id):
     except Exception as e:
         logger.error(f"API error (service_proxy): {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
+
+# ============================================================================
+# Character Manager
+# ============================================================================
+
+CHARACTERS_DIR = PROJECT_ROOT / 'ki_chat' / 'characters'
+VOICES_DIR = PROJECT_ROOT / 'textToSpeech' / 'voices'
+MODELS_DIR = PROJECT_ROOT / 'web_avatar' / 'models'
+WORK_VRM_DIR = PROJECT_ROOT / 'work_vrm'
+BLEND_VRM_DIR = PROJECT_ROOT / 'blend_to_vrm' / 'vrm'
+GLB_VRM_DIR = PROJECT_ROOT / 'glb_to_vrm' / 'vrm'
+
+
+def _scan_all_voices():
+    """Return list of ALL available voice files with metadata."""
+    voices = []
+    if VOICES_DIR.exists():
+        for f in VOICES_DIR.iterdir():
+            if f.is_file() and f.suffix.lower() in ('.wav', '.mp3', '.ogg', '.flac'):
+                voices.append({
+                    'name': f.name,
+                    'stem': f.stem.lower(),
+                    'path': str(f),
+                    'size': f.stat().st_size,
+                    'ext': f.suffix.lower()
+                })
+    return sorted(voices, key=lambda x: x['name'])
+
+
+def _scan_all_models():
+    """Return list of ALL available 3D model files from all sources."""
+    models = []
+    sources = [
+        (MODELS_DIR, 'web_avatar'),
+        (WORK_VRM_DIR, 'work_vrm'),
+        (BLEND_VRM_DIR, 'blend_to_vrm'),
+        (GLB_VRM_DIR, 'glb_to_vrm'),
+    ]
+    for folder, source in sources:
+        if folder.exists():
+            for f in folder.iterdir():
+                if f.is_file() and f.suffix.lower() in ('.vrm', '.glb'):
+                    models.append({
+                        'name': f.name,
+                        'stem': f.stem.lower(),
+                        'path': str(f),
+                        'relative': f'{source}/{f.name}',
+                        'size': f.stat().st_size,
+                        'ext': f.suffix.lower()[1:],
+                        'source': source
+                    })
+    return sorted(models, key=lambda x: x['name'])
+
+
+def _scan_characters():
+    """Scan characters and build unified data with auto-match + manual assign info."""
+    characters = {}
+    all_voices = _scan_all_voices()
+    all_models = _scan_all_models()
+
+    # 1. ki_chat character JSONs (primary source – only characters come from here)
+    if CHARACTERS_DIR.exists():
+        for f in CHARACTERS_DIR.glob('*.json'):
+            key = f.stem.lower()
+            try:
+                with open(f, 'r', encoding='utf-8') as fh:
+                    data = json.load(fh)
+            except Exception:
+                data = {}
+
+            # Auto-match: voice with same stem
+            auto_voice = next((v for v in all_voices if v['stem'] == key), None)
+            # Auto-match: models that contain the character name
+            auto_models = [m for m in all_models if key in m['stem'] or m['stem'].startswith(key)]
+
+            # Manual assignments stored in the character JSON
+            assigned_voice = data.get('assigned_voice', None)  # filename string
+            assigned_model = data.get('assigned_model', None)  # relative path string
+
+            # Resolve the assigned voice to full info
+            resolved_voice = None
+            if assigned_voice:
+                resolved_voice = next((v for v in all_voices if v['name'] == assigned_voice), None)
+
+            # Resolve the assigned model to full info
+            resolved_model = None
+            if assigned_model:
+                resolved_model = next((m for m in all_models if m['name'] == assigned_model or m['relative'] == assigned_model), None)
+
+            characters[key] = {
+                'id': key,
+                'display_name': data.get('name', key.capitalize()),
+                'chat_config': data,
+                # Auto-matched assets (by filename)
+                'auto_voice': auto_voice,
+                'auto_models': auto_models,
+                # Manually assigned assets (stored in config)
+                'assigned_voice': assigned_voice,
+                'assigned_model': assigned_model,
+                'resolved_voice': resolved_voice,
+                'resolved_model': resolved_model,
+                # Effective: manual overrides auto
+                'effective_voice': resolved_voice or auto_voice,
+                'effective_model': resolved_model or (auto_models[0] if auto_models else None),
+            }
+
+    return characters
+
+
+@app.route('/characters')
+def characters_page():
+    """Character management page."""
+    try:
+        characters = _scan_characters()
+        all_voices = _scan_all_voices()
+        all_models = _scan_all_models()
+        current_instance_name = pm.current_instance or 'default'
+        instances = load_instances() or []
+        return render_template(
+            'characters.html',
+            characters=characters,
+            all_voices=all_voices,
+            all_models=all_models,
+            current_instance_name=current_instance_name,
+            instances=instances
+        )
+    except Exception as e:
+        logger.error(f"Error in characters page: {e}\n{traceback.format_exc()}")
+        return f"Error: {str(e)}", 500
+
+
+@app.route('/api/characters', methods=['GET'])
+def api_characters_list():
+    """List all characters with their linked assets."""
+    try:
+        characters = _scan_characters()
+        return jsonify({'success': True, 'characters': characters})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/characters/list-simple', methods=['GET'])
+def api_characters_list_simple():
+    """Lightweight character list for dropdown pickers (id, name, assets)."""
+    try:
+        characters = _scan_characters()
+        simple = []
+        for char_id, char in characters.items():
+            ev = char.get('effective_voice')
+            em = char.get('effective_model')
+            simple.append({
+                'id': char_id,
+                'name': char.get('display_name', char_id),
+                'has_voice': ev is not None,
+                'voice_file': ev['name'] if ev else None,
+                'has_model': em is not None,
+                'model_file': em['name'] if em else None,
+                'model_path': em.get('relative', em['name']) if em else None,
+            })
+        return jsonify({'success': True, 'characters': simple})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/characters/voices', methods=['GET'])
+def api_characters_voices():
+    """List ALL available voice files."""
+    return jsonify({'success': True, 'voices': _scan_all_voices()})
+
+
+@app.route('/api/characters/models', methods=['GET'])
+def api_characters_models():
+    """List ALL available 3D models from all sources."""
+    return jsonify({'success': True, 'models': _scan_all_models()})
+
+
+@app.route('/api/characters/<char_id>', methods=['GET'])
+def api_character_get(char_id):
+    """Get a single character's full config + asset info."""
+    try:
+        char_file = CHARACTERS_DIR / f"{char_id}.json"
+        if not char_file.exists():
+            return jsonify({'success': False, 'error': 'Character nicht gefunden'}), 404
+        with open(char_file, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+
+        # Also return scanned asset info
+        characters = _scan_characters()
+        char_info = characters.get(char_id, {})
+
+        return jsonify({
+            'success': True,
+            'character': data,
+            'id': char_id,
+            'assets': {
+                'auto_voice': char_info.get('auto_voice'),
+                'auto_models': char_info.get('auto_models', []),
+                'assigned_voice': char_info.get('assigned_voice'),
+                'assigned_model': char_info.get('assigned_model'),
+                'resolved_voice': char_info.get('resolved_voice'),
+                'resolved_model': char_info.get('resolved_model'),
+                'effective_voice': char_info.get('effective_voice'),
+                'effective_model': char_info.get('effective_model'),
+            }
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/characters/<char_id>', methods=['PUT'])
+def api_character_save(char_id):
+    """Save/update a character's chat config."""
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'success': False, 'error': 'Keine Daten erhalten'}), 400
+
+        CHARACTERS_DIR.mkdir(parents=True, exist_ok=True)
+        char_file = CHARACTERS_DIR / f"{char_id}.json"
+        with open(char_file, 'w', encoding='utf-8') as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+
+        return jsonify({'success': True, 'message': f'Character "{char_id}" gespeichert'})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/characters/<char_id>', methods=['DELETE'])
+def api_character_delete(char_id):
+    """Delete a character's chat config file."""
+    try:
+        char_file = CHARACTERS_DIR / f"{char_id}.json"
+        if char_file.exists():
+            char_file.unlink()
+        return jsonify({'success': True, 'message': f'Character "{char_id}" gelöscht'})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/characters/new', methods=['POST'])
+def api_character_create():
+    """Create a new character with default settings."""
+    try:
+        data = request.get_json()
+        char_id = data.get('id', '').strip().lower()
+        if not char_id:
+            return jsonify({'success': False, 'error': 'Character ID erforderlich'}), 400
+        if not all(c.isalnum() or c == '_' for c in char_id):
+            return jsonify({'success': False, 'error': 'ID darf nur Buchstaben, Zahlen und Unterstriche enthalten'}), 400
+
+        char_file = CHARACTERS_DIR / f"{char_id}.json"
+        if char_file.exists():
+            return jsonify({'success': False, 'error': f'Character "{char_id}" existiert bereits'}), 409
+
+        display_name = data.get('name', char_id.capitalize())
+        new_char = {
+            "name": display_name,
+            "db_path": f"memory_{char_id}.db",
+            "model": "deeliar-m4000-perf:latest",
+            "system_prompt": f"SYSTEM:\\nName: {display_name}\\n\\nGRUNDREGELN:\\nDu bist {display_name}.\\nJede Antwort endet exakt mit: \"|| <emotion>\"\\n\\nERLAUBTE EMOTIONEN:\\nsurprise\\nangry\\nsorrow\\nfun\\nneutral\\njoy\\n\\nAUSGABEFORMAT:\\nAntworte immer als {display_name}.\\nKeine Meta-Erklärungen.\\nJede Antwort endet exakt mit: \"|| <emotion>\"",
+            "self_username": f"__{char_id}__",
+            "thinking_rate": 0.50,
+            "max_history": 16,
+            "max_user_focus": 6,
+            "enable_auto_memory": True,
+            "enable_pervy_guard": False,
+            "assigned_voice": None,
+            "assigned_model": None
+        }
+
+        CHARACTERS_DIR.mkdir(parents=True, exist_ok=True)
+        with open(char_file, 'w', encoding='utf-8') as f:
+            json.dump(new_char, f, indent=2, ensure_ascii=False)
+
+        return jsonify({'success': True, 'message': f'Character "{char_id}" erstellt', 'character': new_char})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/characters/<char_id>/assign', methods=['POST'])
+def api_character_assign(char_id):
+    """Assign a voice or model to a character. Body: { type: 'voice'|'model', value: 'filename' | null }"""
+    try:
+        char_file = CHARACTERS_DIR / f"{char_id}.json"
+        if not char_file.exists():
+            return jsonify({'success': False, 'error': 'Character nicht gefunden'}), 404
+
+        with open(char_file, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+
+        body = request.get_json()
+        assign_type = body.get('type')  # 'voice' or 'model'
+        assign_value = body.get('value')  # filename or null to unassign
+
+        if assign_type == 'voice':
+            data['assigned_voice'] = assign_value
+        elif assign_type == 'model':
+            data['assigned_model'] = assign_value
+        else:
+            return jsonify({'success': False, 'error': 'type muss "voice" oder "model" sein'}), 400
+
+        with open(char_file, 'w', encoding='utf-8') as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+
+        return jsonify({'success': True, 'message': f'{assign_type} zugewiesen'})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/characters/<char_id>/voice', methods=['POST'])
+def api_character_upload_voice(char_id):
+    """Upload a voice reference file for a character."""
+    try:
+        if 'voice' not in request.files:
+            return jsonify({'success': False, 'error': 'Keine Datei hochgeladen'}), 400
+        
+        file = request.files['voice']
+        if not file.filename:
+            return jsonify({'success': False, 'error': 'Keine Datei ausgewählt'}), 400
+
+        ext = Path(file.filename).suffix.lower()
+        if ext not in ('.wav', '.mp3', '.ogg', '.flac'):
+            return jsonify({'success': False, 'error': 'Nur WAV, MP3, OGG oder FLAC erlaubt'}), 400
+
+        VOICES_DIR.mkdir(parents=True, exist_ok=True)
+        target = VOICES_DIR / f"{char_id}{ext}"
+        file.save(str(target))
+        return jsonify({'success': True, 'message': f'Voice für "{char_id}" hochgeladen', 'filename': target.name})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/characters/<char_id>/model', methods=['POST'])
+def api_character_upload_model(char_id):
+    """Upload a 3D model file for a character."""
+    try:
+        if 'model' not in request.files:
+            return jsonify({'success': False, 'error': 'Keine Datei hochgeladen'}), 400
+        
+        file = request.files['model']
+        if not file.filename:
+            return jsonify({'success': False, 'error': 'Keine Datei ausgewählt'}), 400
+
+        ext = Path(file.filename).suffix.lower()
+        if ext not in ('.vrm', '.glb'):
+            return jsonify({'success': False, 'error': 'Nur VRM oder GLB erlaubt'}), 400
+
+        MODELS_DIR.mkdir(parents=True, exist_ok=True)
+        target = MODELS_DIR / f"{char_id}{ext}"
+        file.save(str(target))
+        return jsonify({'success': True, 'message': f'Model für "{char_id}" hochgeladen', 'filename': target.name})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/instance/<instance_name>/apply-global', methods=['POST'])
+def api_instance_apply_global(instance_name):
+    """Apply a global field change to all affected service configs of an instance.
+
+    Accepts JSON body: { field_id: str, value: any }
+    Supported field_ids:
+      - character: sets default_character + voice + model (delegates to apply-character)
+      - llm_model: sets ki_chat.ollama.default_model
+      - port_<service>: sets server.port + updates all URL cross-references
+      - osc_port: sets osc.port / osc.listen_port across services
+    """
+    try:
+        data = request.get_json() or {}
+        field_id = data.get('field_id', '').strip()
+        value = data.get('value')
+        if not field_id:
+            return jsonify({'success': False, 'error': 'field_id required'}), 400
+
+        instance = get_instance(instance_name)
+        if not instance:
+            return jsonify({'success': False, 'error': 'Instance not found'}), 404
+
+        # Determine which service IDs belong to this instance
+        all_services = pm.config.get('services', {})
+        if instance.get('services'):
+            service_ids = list(instance['services'].keys())
+        else:
+            service_ids = list(all_services.keys())
+
+        # Load all service configs into memory
+        configs = {}
+        for sid in service_ids:
+            cfg = load_instance_service_runtime_config(instance_name, sid)
+            if cfg is not None:
+                configs[sid] = cfg
+
+        updated = set()
+
+        # ---- Character ----
+        if field_id == 'character':
+            # Delegate to the apply-character logic
+            char_id = str(value or '').strip()
+            if char_id:
+                characters = _scan_characters()
+                char = characters.get(char_id)
+                if char:
+                    # ki_chat
+                    if 'ki_chat' in configs:
+                        configs['ki_chat']['default_character'] = char_id
+                        updated.add('ki_chat')
+                    eff_voice = char.get('effective_voice')
+                    if eff_voice and 'text_to_speech' in configs:
+                        voice_path = f"voices/{eff_voice['name']}"
+                        cfg = configs['text_to_speech']
+                        if 'emotions' in cfg and isinstance(cfg['emotions'], dict):
+                            for emotion in cfg['emotions']:
+                                cfg['emotions'][emotion] = voice_path
+                        updated.add('text_to_speech')
+                    eff_model = char.get('effective_model')
+                    if eff_model and 'web_avatar' in configs:
+                        cfg = configs['web_avatar']
+                        if 'vrm' not in cfg:
+                            cfg['vrm'] = {}
+                        cfg['vrm']['model_path'] = f"models/{eff_model['name']}"
+                        updated.add('web_avatar')
+            elif 'ki_chat' in configs:
+                configs['ki_chat']['default_character'] = ''
+                updated.add('ki_chat')
+
+        # ---- LLM Model ----
+        elif field_id == 'llm_model':
+            if 'ki_chat' in configs:
+                cfg = configs['ki_chat']
+                if 'ollama' not in cfg:
+                    cfg['ollama'] = {}
+                cfg['ollama']['default_model'] = str(value or '')
+                updated.add('ki_chat')
+
+        # ---- Port fields ----
+        elif field_id.startswith('port_'):
+            target_service = field_id[5:]  # strip 'port_'
+            port = int(value) if value else 0
+
+            if target_service in configs:
+                cfg = configs[target_service]
+                if 'server' not in cfg:
+                    cfg['server'] = {}
+                cfg['server']['port'] = port
+                updated.add(target_service)
+
+            # Cross-reference URL propagation
+            port_url_map = {
+                'ki_chat':        [('main_server', 'services.ki_chat')],
+                'text_to_speech': [('main_server', 'services.text_to_speech')],
+                'vroid_poser':    [('main_server', 'services.vroid_poser')],
+                'vroid_emotion':  [
+                    ('main_server',    'services.vroid_emotion'),
+                    ('text_to_speech', 'services.vroid_emotion'),
+                ],
+                'web_avatar': [
+                    ('vroid_emotion', 'services.web_avatar'),
+                    ('vroid_poser',   'services.web_avatar'),
+                ],
+                'main_server': [
+                    ('text_to_speech', 'services.main_server'),
+                ],
+            }
+            refs = port_url_map.get(target_service, [])
+            for ref_svc, ref_path in refs:
+                if ref_svc in configs:
+                    cfg = configs[ref_svc]
+                    # Navigate to the nested key
+                    parts = ref_path.split('.')
+                    obj = cfg
+                    for p in parts[:-1]:
+                        if isinstance(obj, dict) and p in obj:
+                            obj = obj[p]
+                        else:
+                            obj = None
+                            break
+                    if obj and isinstance(obj, dict) and parts[-1] in obj:
+                        current_url = obj[parts[-1]]
+                        if isinstance(current_url, str):
+                            obj[parts[-1]] = re.sub(r':\d+$', f':{port}', current_url)
+                            updated.add(ref_svc)
+
+            # Ollama special case: update ki_chat.ollama.url
+            if target_service == 'ollama' and 'ki_chat' in configs:
+                ki_cfg = configs['ki_chat']
+                if 'ollama' in ki_cfg and 'url' in ki_cfg['ollama']:
+                    host = configs.get('ollama', {}).get('server', {}).get('host', '127.0.0.1')
+                    ki_cfg['ollama']['url'] = re.sub(r'//[^/]+', f'//{host}:{port}', ki_cfg['ollama']['url'])
+                    updated.add('ki_chat')
+
+        # ---- OSC Port ----
+        elif field_id == 'osc_port':
+            osc_port = int(value) if value else 0
+            for sid in ['text_to_speech', 'vroid_emotion', 'vroid_poser']:
+                if sid in configs:
+                    cfg = configs[sid]
+                    if 'osc' not in cfg:
+                        cfg['osc'] = {}
+                    cfg['osc']['port'] = osc_port
+                    updated.add(sid)
+            if 'web_avatar' in configs:
+                cfg = configs['web_avatar']
+                if 'osc' not in cfg:
+                    cfg['osc'] = {}
+                cfg['osc']['listen_port'] = osc_port
+                updated.add('web_avatar')
+
+        else:
+            return jsonify({'success': False, 'error': f'Unknown field_id: {field_id}'}), 400
+
+        # Save all updated configs
+        saved = []
+        for sid in updated:
+            if save_instance_service_runtime_config(instance_name, sid, configs[sid]):
+                saved.append(sid)
+
+        return jsonify({
+            'success': True,
+            'field_id': field_id,
+            'updated_services': saved,
+        })
+    except Exception as e:
+        logger.error(f"API error (apply_global): {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/instance/<instance_name>/apply-character', methods=['POST'])
+def api_instance_apply_character(instance_name):
+    """Apply a character's assets (voice, model) to all service configs of an instance."""
+    try:
+        data = request.get_json() or {}
+        char_id = data.get('character_id', '').strip()
+        if not char_id:
+            return jsonify({'success': False, 'error': 'character_id required'}), 400
+
+        characters = _scan_characters()
+        char = characters.get(char_id)
+        if not char:
+            return jsonify({'success': False, 'error': f'Character "{char_id}" not found'}), 404
+
+        eff_voice = char.get('effective_voice')
+        eff_model = char.get('effective_model')
+        updated_services = []
+
+        config_dir = Path('instance_service_configs') / instance_name
+        config_dir.mkdir(parents=True, exist_ok=True)
+
+        # 1. ki_chat: set default_character
+        ki_chat_path = config_dir / 'ki_chat.json'
+        if ki_chat_path.exists():
+            with open(ki_chat_path, 'r', encoding='utf-8') as f:
+                cfg = json.load(f)
+        else:
+            cfg = {}
+        cfg['default_character'] = char_id
+        with open(ki_chat_path, 'w', encoding='utf-8') as f:
+            json.dump(cfg, f, indent=2, ensure_ascii=False)
+        updated_services.append('ki_chat')
+
+        # 2. text_to_speech: set voice for all emotions
+        if eff_voice:
+            tts_path = config_dir / 'text_to_speech.json'
+            if tts_path.exists():
+                with open(tts_path, 'r', encoding='utf-8') as f:
+                    cfg = json.load(f)
+            else:
+                cfg = {}
+            voice_path = f"voices/{eff_voice['name']}"
+            if 'emotions' in cfg and isinstance(cfg['emotions'], dict):
+                for emotion in cfg['emotions']:
+                    cfg['emotions'][emotion] = voice_path
+            with open(tts_path, 'w', encoding='utf-8') as f:
+                json.dump(cfg, f, indent=2, ensure_ascii=False)
+            updated_services.append('text_to_speech')
+
+        # 3. web_avatar: set vrm model path
+        if eff_model:
+            wa_path = config_dir / 'web_avatar.json'
+            if wa_path.exists():
+                with open(wa_path, 'r', encoding='utf-8') as f:
+                    cfg = json.load(f)
+            else:
+                cfg = {}
+            if 'vrm' not in cfg:
+                cfg['vrm'] = {}
+            cfg['vrm']['model_path'] = f"models/{eff_model['name']}"
+            with open(wa_path, 'w', encoding='utf-8') as f:
+                json.dump(cfg, f, indent=2, ensure_ascii=False)
+            updated_services.append('web_avatar')
+
+        return jsonify({
+            'success': True,
+            'updated_services': updated_services,
+            'character': char_id,
+            'voice': eff_voice['name'] if eff_voice else None,
+            'model': eff_model['name'] if eff_model else None
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 
 # ============================================================================
 # Error Handlers

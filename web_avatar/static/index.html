@@ -9,19 +9,64 @@
   canvas { display: block; background: transparent !important; }
 
   #loading {
-    position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+    position: fixed; inset: 0;
     display: flex; align-items: center; justify-content: center;
-    flex-direction: column; gap: 12px;
-    background: rgba(10, 10, 20, 0.95);
-    font-family: 'Segoe UI', sans-serif; color: #ccc;
-    z-index: 100;
-    transition: opacity 0.5s;
+    flex-direction: column; gap: 0;
+    background: #0a0e1a;
+    font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+    color: #ccc; z-index: 100;
+    transition: opacity 0.5s ease, transform 0.5s ease;
   }
-  #loading.hidden { opacity: 0; pointer-events: none; }
-  #loading h2 { font-size: 20px; font-weight: 400; color: #fff; }
-  #loading .progress { font-size: 14px; color: #888; }
+  #loading.hidden { opacity: 0; transform: scale(1.05); pointer-events: none; }
+  #loading .ls-logo {
+    font-size: 52px; margin-bottom: 18px;
+    animation: ls-pulse 1.6s ease-in-out infinite;
+    filter: drop-shadow(0 0 18px rgba(59,130,246,.5));
+  }
+  #loading h2 { font-size: 18px; font-weight: 600; color: #e2e8f0; letter-spacing: .5px; margin-bottom: 8px; }
+  #loading .progress { font-size: 13px; color: #94a3b8; margin-bottom: 24px; }
   #loading .error { color: #f44; font-size: 14px; max-width: 500px; text-align: center; line-height: 1.6; }
   #loading .hint { color: #888; font-size: 12px; margin-top: 8px; }
+  #loading .ls-bar-track {
+    width: 220px; height: 3px;
+    background: rgba(255,255,255,.08);
+    border-radius: 3px; overflow: hidden;
+    position: relative;
+  }
+  #loading .ls-bar {
+    position: absolute; inset: 0;
+    width: 40%; height: 100%;
+    border-radius: 3px;
+    background: linear-gradient(90deg, #3b82f6, #60a5fa, #3b82f6);
+    background-size: 200% 100%;
+    animation: ls-slide 1.2s ease-in-out infinite;
+  }
+  #loading .ls-particles {
+    position: absolute; inset: 0; overflow: hidden;
+    pointer-events: none;
+  }
+  #loading .ls-p {
+    position: absolute;
+    width: 2px; height: 2px;
+    background: rgba(59,130,246,.4);
+    border-radius: 50%;
+    animation: ls-float linear infinite;
+  }
+  @keyframes ls-pulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.12); }
+  }
+  @keyframes ls-slide {
+    0% { transform: translateX(-100%); background-position: 0% 0; }
+    50% { background-position: 100% 0; }
+    100% { transform: translateX(350%); background-position: 0% 0; }
+  }
+  @keyframes ls-float {
+    0% { transform: translateY(100vh) scale(0); opacity: 0; }
+    10% { opacity: 1; }
+    90% { opacity: 1; }
+    100% { transform: translateY(-10vh) scale(1); opacity: 0; }
+  }
 
   #hud {
     position: fixed; bottom: 10px; left: 10px;
@@ -35,9 +80,25 @@
 <body>
 
 <div id="loading">
-  <h2 id="loadTitle">Avatar wird geladen...</h2>
+  <div class="ls-particles" id="ls-particles"></div>
+  <div class="ls-logo">🧍</div>
+  <h2 id="loadTitle">Avatar wird geladen …</h2>
   <div class="progress" id="loadProgress"></div>
+  <div class="ls-bar-track"><div class="ls-bar"></div></div>
 </div>
+<script>
+(function(){
+    var c=document.getElementById('ls-particles');
+    for(var i=0;i<25;i++){
+        var p=document.createElement('div');p.className='ls-p';
+        p.style.left=Math.random()*100+'%';
+        p.style.animationDuration=(3+Math.random()*5)+'s';
+        p.style.animationDelay=Math.random()*4+'s';
+        p.style.width=p.style.height=(1+Math.random()*3)+'px';
+        c.appendChild(p);
+    }
+})();
+</script>
 
 <div id="hud">
   <span id="hudText">Warte auf Daten...</span>

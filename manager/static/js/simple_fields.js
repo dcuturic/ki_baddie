@@ -6,6 +6,296 @@ var audioModePerService = {};
 var virtualAssignments = {};  // { instanceName: assignment }
 var ollamaModels = [];  // cached list of installed Ollama models
 var ollamaModelsLoaded = false;
+var charactersList = [];  // cached character list for dropdowns
+var charactersLoaded = false;
+
+// ===========================================================================
+// GLOBAL FIELDS – editable once, propagated to all services
+// ===========================================================================
+var GLOBAL_FIELDS = [
+    {
+        id: 'character',
+        label: '🎭 Character',
+        type: 'character_select',
+        hint: 'Setzt automatisch Chat-Character, Voice & 3D-Model',
+        read: (cfgs) => getNestedValue(cfgs['ki_chat'] || {}, 'default_character') || '',
+        write: (cfgs, val) => {
+            // handled by applyCharacterToConfigs + ki_chat default_character
+        }
+    },
+    {
+        id: 'llm_model',
+        label: '🤖 LLM Model',
+        type: 'ollama_model',
+        hint: 'Ollama Modell für KI Chat',
+        read: (cfgs) => getNestedValue(cfgs['ki_chat'] || {}, 'ollama.default_model') || '',
+        write: (cfgs, val) => {
+            if (cfgs['ki_chat']) setNestedValue(cfgs['ki_chat'], 'ollama.default_model', val);
+        }
+    },
+    {
+        id: 'port_main_server',
+        label: '🎯 Main Server Port',
+        type: 'number',
+        hint: '',
+        service: 'main_server',
+        read: (cfgs) => getNestedValue(cfgs['main_server'] || {}, 'server.port') ?? '',
+        write: (cfgs, val) => {
+            if (cfgs['main_server']) setNestedValue(cfgs['main_server'], 'server.port', val);
+            _propagatePortToUrls(cfgs, 'main_server', val);
+        }
+    },
+    {
+        id: 'port_ki_chat',
+        label: '💬 KI Chat Port',
+        type: 'number',
+        hint: '',
+        service: 'ki_chat',
+        read: (cfgs) => getNestedValue(cfgs['ki_chat'] || {}, 'server.port') ?? '',
+        write: (cfgs, val) => {
+            if (cfgs['ki_chat']) setNestedValue(cfgs['ki_chat'], 'server.port', val);
+            _propagatePortToUrls(cfgs, 'ki_chat', val);
+        }
+    },
+    {
+        id: 'port_text_to_speech',
+        label: '🔊 TTS Port',
+        type: 'number',
+        hint: '',
+        service: 'text_to_speech',
+        read: (cfgs) => getNestedValue(cfgs['text_to_speech'] || {}, 'server.port') ?? '',
+        write: (cfgs, val) => {
+            if (cfgs['text_to_speech']) setNestedValue(cfgs['text_to_speech'], 'server.port', val);
+            _propagatePortToUrls(cfgs, 'text_to_speech', val);
+        }
+    },
+    {
+        id: 'port_web_avatar',
+        label: '🌐 Web Avatar Port',
+        type: 'number',
+        hint: '',
+        service: 'web_avatar',
+        read: (cfgs) => getNestedValue(cfgs['web_avatar'] || {}, 'server.port') ?? '',
+        write: (cfgs, val) => {
+            if (cfgs['web_avatar']) setNestedValue(cfgs['web_avatar'], 'server.port', val);
+            _propagatePortToUrls(cfgs, 'web_avatar', val);
+        }
+    },
+    {
+        id: 'port_vroid_emotion',
+        label: '😊 VroidEmotion Port',
+        type: 'number',
+        hint: '',
+        service: 'vroid_emotion',
+        read: (cfgs) => getNestedValue(cfgs['vroid_emotion'] || {}, 'server.port') ?? '',
+        write: (cfgs, val) => {
+            if (cfgs['vroid_emotion']) setNestedValue(cfgs['vroid_emotion'], 'server.port', val);
+            _propagatePortToUrls(cfgs, 'vroid_emotion', val);
+        }
+    },
+    {
+        id: 'port_vroid_poser',
+        label: '🎭 VroidPoser Port',
+        type: 'number',
+        hint: '',
+        service: 'vroid_poser',
+        read: (cfgs) => getNestedValue(cfgs['vroid_poser'] || {}, 'server.port') ?? '',
+        write: (cfgs, val) => {
+            if (cfgs['vroid_poser']) setNestedValue(cfgs['vroid_poser'], 'server.port', val);
+            _propagatePortToUrls(cfgs, 'vroid_poser', val);
+        }
+    },
+    {
+        id: 'port_ollama',
+        label: '🤖 Ollama Port',
+        type: 'number',
+        hint: '',
+        service: 'ollama',
+        read: (cfgs) => getNestedValue(cfgs['ollama'] || {}, 'server.port') ?? '',
+        write: (cfgs, val) => {
+            if (cfgs['ollama']) setNestedValue(cfgs['ollama'], 'server.port', val);
+            // Ollama URL in ki_chat
+            if (cfgs['ki_chat'] && cfgs['ki_chat'].ollama && cfgs['ki_chat'].ollama.url) {
+                const oHost = getNestedValue(cfgs['ollama'] || {}, 'server.host') || '127.0.0.1';
+                cfgs['ki_chat'].ollama.url = cfgs['ki_chat'].ollama.url.replace(/\/\/[^/]+/, '//' + oHost + ':' + val);
+            }
+        }
+    },
+    {
+        id: 'osc_port',
+        label: '🔌 OSC Port',
+        type: 'number',
+        hint: 'Gemeinsamer OSC Port für alle Services',
+        read: (cfgs) => getNestedValue(cfgs['text_to_speech'] || cfgs['vroid_emotion'] || cfgs['web_avatar'] || {}, 'osc.port') ||
+                         getNestedValue(cfgs['web_avatar'] || {}, 'osc.listen_port') || '',
+        write: (cfgs, val) => {
+            if (cfgs['text_to_speech']) setNestedValue(cfgs['text_to_speech'], 'osc.port', val);
+            if (cfgs['vroid_emotion']) setNestedValue(cfgs['vroid_emotion'], 'osc.port', val);
+            if (cfgs['vroid_poser']) setNestedValue(cfgs['vroid_poser'], 'osc.port', val);
+            if (cfgs['web_avatar']) setNestedValue(cfgs['web_avatar'], 'osc.listen_port', val);
+        }
+    },
+];
+
+/**
+ * Map of which services reference which other services' ports in their `services.*` URLs.
+ * Key = target service whose port changed. Values = [{service, path}] where the URL lives.
+ */
+var PORT_URL_MAP = {
+    ki_chat:        [{svc: 'main_server', path: 'services.ki_chat'}],
+    text_to_speech: [{svc: 'main_server', path: 'services.text_to_speech'}],
+    vroid_poser:    [{svc: 'main_server', path: 'services.vroid_poser'}],
+    vroid_emotion:  [
+        {svc: 'main_server',    path: 'services.vroid_emotion'},
+        {svc: 'text_to_speech', path: 'services.vroid_emotion'},
+    ],
+    web_avatar: [
+        {svc: 'vroid_emotion', path: 'services.web_avatar'},
+        {svc: 'vroid_poser',   path: 'services.web_avatar'},
+    ],
+    main_server: [
+        {svc: 'text_to_speech', path: 'services.main_server'},
+    ],
+};
+
+function _propagatePortToUrls(cfgs, changedService, newPort) {
+    const refs = PORT_URL_MAP[changedService] || [];
+    refs.forEach(ref => {
+        const cfg = cfgs[ref.svc];
+        if (!cfg) return;
+        const currentUrl = getNestedValue(cfg, ref.path);
+        if (typeof currentUrl === 'string') {
+            setNestedValue(cfg, ref.path, currentUrl.replace(/:\d+$/, ':' + newPort));
+        }
+    });
+}
+
+/**
+ * Build the HTML for the Global Settings card.
+ * @param {object} allConfigs - all service configs (pendingServiceConfigs)
+ * @param {string} onChangeFn - JS callback name for field changes
+ * @returns {string} HTML
+ */
+function buildGlobalSettingsHtml(allConfigs, onChangeFn) {
+    let html = '';
+
+    GLOBAL_FIELDS.forEach(field => {
+        // Skip fields whose service is not in the config set
+        if (field.service && !allConfigs[field.service]) return;
+
+        const val = field.read(allConfigs);
+        const fieldId = `global-${field.id}`;
+        const hintHtml = field.hint ? `<small style="color:var(--text-muted);">${field.hint}</small>` : '';
+
+        if (field.type === 'character_select') {
+            const currentVal = val || '';
+            let optionsHtml = `<option value="">(kein Character)</option>`;
+            let matched = false;
+            charactersList.forEach(c => {
+                const isSelected = currentVal === c.id;
+                if (isSelected) matched = true;
+                const voiceTag = c.has_voice ? '🎙️' : '';
+                const modelTag = c.has_model ? '🧊' : '';
+                optionsHtml += `<option value="${c.id}" ${isSelected ? 'selected' : ''}>${c.name} (${c.id}) ${voiceTag}${modelTag}</option>`;
+            });
+            if (currentVal && !matched) {
+                optionsHtml += `<option value="${currentVal}" selected>⚠️ ${currentVal}</option>`;
+            }
+            html += `
+                <div style="display:flex;align-items:center;gap:0.7rem;padding:0.4rem 0;flex-wrap:wrap;">
+                    <label for="${fieldId}" style="min-width:150px;margin:0;font-weight:600;">${field.label}</label>
+                    <select id="${fieldId}" class="form-input" style="flex:1;min-width:200px;"
+                            onchange="globalFieldChanged('${field.id}', this.value, '${onChangeFn}')">
+                        ${optionsHtml}
+                    </select>
+                    <button type="button" class="btn btn-secondary" style="padding:0.2rem 0.5rem;font-size:0.8em;"
+                            onclick="refreshCharactersList()" title="Neu laden">🔄</button>
+                    ${hintHtml}
+                </div>`;
+            if (!charactersLoaded) { loadCharactersList().then(() => { if (typeof renderSimpleEditors === 'function') renderSimpleEditors(); }); }
+        } else if (field.type === 'ollama_model') {
+            const currentVal = val || '';
+            let optionsHtml = `<option value="">(nicht gesetzt)</option>`;
+            let matched = false;
+            ollamaModels.forEach(m => {
+                const isSelected = currentVal === m.name;
+                if (isSelected) matched = true;
+                const sizeTag = m.size_gb ? ` (${m.size_gb} GB)` : '';
+                optionsHtml += `<option value="${m.name}" ${isSelected ? 'selected' : ''}>${m.name}${sizeTag}</option>`;
+            });
+            if (currentVal && !matched) {
+                optionsHtml += `<option value="${currentVal}" selected>⚠️ ${currentVal}</option>`;
+            }
+            html += `
+                <div style="display:flex;align-items:center;gap:0.7rem;padding:0.4rem 0;flex-wrap:wrap;">
+                    <label for="${fieldId}" style="min-width:150px;margin:0;font-weight:600;">${field.label}</label>
+                    <select id="${fieldId}" class="form-input" style="flex:1;min-width:200px;"
+                            onchange="globalFieldChanged('${field.id}', this.value, '${onChangeFn}')">
+                        ${optionsHtml}
+                    </select>
+                    <button type="button" class="btn btn-secondary" style="padding:0.2rem 0.5rem;font-size:0.8em;"
+                            onclick="refreshOllamaModels()" title="Neu laden">🔄</button>
+                    ${hintHtml}
+                </div>`;
+            if (!ollamaModelsLoaded) { loadOllamaModels().then(() => { if (typeof renderSimpleEditors === 'function') renderSimpleEditors(); }); }
+        } else if (field.type === 'number') {
+            html += `
+                <div style="display:flex;align-items:center;gap:0.7rem;padding:0.35rem 0;flex-wrap:wrap;">
+                    <label for="${fieldId}" style="min-width:150px;margin:0;">${field.label}</label>
+                    <input type="number" id="${fieldId}" value="${val}" class="form-input" style="width:100px;"
+                           onchange="globalFieldChanged('${field.id}', Number(this.value), '${onChangeFn}')">
+                    ${hintHtml}
+                </div>`;
+        } else {
+            html += `
+                <div style="display:flex;align-items:center;gap:0.7rem;padding:0.35rem 0;flex-wrap:wrap;">
+                    <label for="${fieldId}" style="min-width:150px;margin:0;">${field.label}</label>
+                    <input type="text" id="${fieldId}" value="${val}" class="form-input" style="flex:1;min-width:200px;"
+                           onchange="globalFieldChanged('${field.id}', this.value, '${onChangeFn}')">
+                    ${hintHtml}
+                </div>`;
+        }
+    });
+
+    return html;
+}
+
+/**
+ * Handle a change from the Global Settings panel.
+ * Propagates the value to all affected service configs and re-renders.
+ * Works in two contexts:
+ *  1. index.html create/edit modal (pendingServiceConfigs in memory)
+ *  2. instance_config.html (delegates to icGlobalFieldChanged via onChangeFn)
+ */
+function globalFieldChanged(fieldId, value, onChangeFn) {
+    // If the onChangeFn is 'icGlobalFieldChanged', delegate to the instance_config handler
+    if (onChangeFn === 'icGlobalFieldChanged' && typeof window['icGlobalFieldChanged'] === 'function') {
+        window['icGlobalFieldChanged'](fieldId, value, onChangeFn);
+        return;
+    }
+
+    // Only works in the create/edit modal context (pendingServiceConfigs)
+    if (typeof pendingServiceConfigs === 'undefined' || !pendingServiceConfigs) return;
+
+    const field = GLOBAL_FIELDS.find(f => f.id === fieldId);
+    if (!field) return;
+
+    // Character is special — use the existing applyCharacterToConfigs
+    if (field.type === 'character_select') {
+        if (pendingServiceConfigs['ki_chat']) {
+            setNestedValue(pendingServiceConfigs['ki_chat'], 'default_character', value);
+        }
+        if (value) {
+            applyCharacterToConfigs(value, pendingServiceConfigs, null);
+        }
+    } else {
+        field.write(pendingServiceConfigs, value);
+    }
+
+    if (typeof renderPortConflictSummary === 'function') renderPortConflictSummary();
+    if (typeof refreshAllServiceConflictLabels === 'function') refreshAllServiceConflictLabels();
+    if (typeof renderSimpleEditors === 'function') renderSimpleEditors();
+}
 
 async function loadOllamaModels() {
     if (ollamaModelsLoaded) return;
@@ -28,6 +318,112 @@ async function refreshOllamaModels(serviceId, path, onChangeFn) {
     ollamaModelsLoaded = false;
     await loadOllamaModels();
     if (typeof renderICSimple === 'function') renderICSimple();
+}
+
+async function loadCharactersList() {
+    if (charactersLoaded) return;
+    try {
+        const result = await apiCall('/api/characters/list-simple');
+        if (result && result.success) {
+            charactersList = result.characters || [];
+        } else {
+            console.warn('Characters not available:', result ? result.error : 'unknown');
+            charactersList = [];
+        }
+    } catch (e) {
+        console.warn('Could not load characters:', e);
+        charactersList = [];
+    }
+    charactersLoaded = true;
+}
+
+async function refreshCharactersList() {
+    charactersLoaded = false;
+    await loadCharactersList();
+    if (typeof renderICSimple === 'function') renderICSimple();
+    if (typeof renderSimpleEditors === 'function') renderSimpleEditors();
+}
+
+/**
+ * Apply a selected character's assets across all service configs.
+ * Updates ki_chat default_character, text_to_speech emotions, and web_avatar vrm.model_path.
+ * @param {string} charId - character ID
+ * @param {object} allConfigs - reference to pendingServiceConfigs or similar
+ * @param {function} rerenderFn - function to call after applying
+ */
+function applyCharacterToConfigs(charId, allConfigs, rerenderFn) {
+    const char = charactersList.find(c => c.id === charId);
+    if (!char) return;
+
+    // 1. ki_chat: set default_character
+    if (allConfigs['ki_chat']) {
+        setNestedValue(allConfigs['ki_chat'], 'default_character', charId);
+    }
+
+    // 2. text_to_speech: set voice file for all emotions
+    if (allConfigs['text_to_speech'] && char.voice_file) {
+        const voicePath = 'voices/' + char.voice_file;
+        const ttsCfg = allConfigs['text_to_speech'];
+        if (ttsCfg.emotions && typeof ttsCfg.emotions === 'object') {
+            Object.keys(ttsCfg.emotions).forEach(emotion => {
+                ttsCfg.emotions[emotion] = voicePath;
+            });
+        }
+    }
+
+    // 3. web_avatar: set vrm model path
+    if (allConfigs['web_avatar'] && char.model_file) {
+        const modelPath = 'models/' + char.model_file;
+        setNestedValue(allConfigs['web_avatar'], 'vrm.model_path', modelPath);
+    }
+
+    if (rerenderFn) rerenderFn();
+}
+
+/**
+ * Handler called when a character_select dropdown changes.
+ * Detects the context (index.html create modal vs instance_config.html) and applies accordingly.
+ */
+function handleCharacterSelect(charId, serviceId, onChangeFn) {
+    // 1. Set ki_chat default_character via the normal field change callback
+    if (typeof window[onChangeFn] === 'function') {
+        window[onChangeFn](serviceId, 'default_character', charId, 'text');
+    }
+
+    // 2. Apply character assets across all services
+    if (typeof pendingServiceConfigs !== 'undefined' && pendingServiceConfigs) {
+        // index.html create/edit modal context — apply in-memory
+        if (charId) {
+            applyCharacterToConfigs(charId, pendingServiceConfigs, 
+                typeof renderSimpleEditors === 'function' ? renderSimpleEditors : null);
+        }
+    } else if (typeof currentInstanceName !== 'undefined' && currentInstanceName && charId) {
+        // instance_config.html context — call API to apply across all service configs
+        fetch(`/api/instance/${currentInstanceName}/apply-character`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ character_id: charId })
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                const parts = [];
+                if (data.voice) parts.push('🎙️ ' + data.voice);
+                if (data.model) parts.push('🧊 ' + data.model);
+                const msg = `Character "${charId}" angewendet` + (parts.length ? ': ' + parts.join(', ') : '');
+                if (typeof showNotification === 'function') showNotification('✅ ' + msg, 'success');
+                // Reload current service config to show updated values
+                if (typeof loadServiceConfig === 'function' && currentServiceId) {
+                    loadServiceConfig(currentServiceId);
+                }
+            } else {
+                if (typeof showNotification === 'function') showNotification('❌ ' + (data.error || 'Fehler'), 'error');
+            }
+        })
+        .catch(e => {
+            if (typeof showNotification === 'function') showNotification('❌ Netzwerkfehler: ' + e.message, 'error');
+        });
+    }
 }
 
 function getAudioMode(serviceId) {
@@ -105,9 +501,10 @@ var SIMPLE_FIELDS = {
         { path: 'server.debug', label: 'Debug', type: 'bool' },
         { path: 'ollama.url', label: 'Ollama URL', type: 'url', hint: 'Ollama API Endpoint' },
         { path: 'ollama.default_model', label: 'LLM Model', type: 'ollama_model', hint: 'Installiertes Ollama-Modell auswählen' },
-        { path: 'default_character', label: 'Default Character', type: 'text', hint: 'z.B. dilara, alex, luna' },
+        { path: 'default_character', label: '🎭 Character', type: 'character_select', hint: 'Character für diese Instanz – setzt auch Voice & Model automatisch' },
     ],
     text_to_speech: [
+        { path: '_character_voice', label: '🎭 Character Voice', type: 'character_select_voice', hint: 'Voice wird automatisch vom Character gesetzt' },
         { path: 'server.port', label: 'Server Port', type: 'number', hint: 'HTTP-Port des TTS' },
         { path: 'server.host', label: 'Host', type: 'text' },
         { path: 'server.debug', label: 'Debug', type: 'bool' },
@@ -137,6 +534,7 @@ var SIMPLE_FIELDS = {
     web_avatar: [
         { path: 'server.port', label: 'Server Port', type: 'number', hint: 'HTTP-Port des Web Avatar (Standard: 5006)' },
         { path: 'server.host', label: 'Host', type: 'text' },
+        { path: '_character_model', label: '🎭 Character Model', type: 'character_select_model', hint: 'VRM wird automatisch vom Character gesetzt' },
         { path: 'vrm.model_path', label: 'VRM Modell', type: 'text', hint: 'Pfad zur .vrm Datei (relativ zum Service-Ordner)' },
         { path: 'camera.fov', label: '📷 FOV', type: 'number', hint: 'Sichtfeld der Kamera in Grad (Standard: 28)' },
         { path: 'camera.position.0', label: '📷 Position X', type: 'number_float', hint: 'Kamera X-Position' },
@@ -400,6 +798,56 @@ function buildSimpleFieldsHtml(serviceId, cfg, options) {
                 </div>`;
             // Trigger lazy load if not yet loaded
             if (!ollamaModelsLoaded) { loadOllamaModels().then(() => { if (typeof renderICSimple === 'function') renderICSimple(); }); }
+        } else if (field.type === 'character_select') {
+            // Full character dropdown – sets default_character AND applies voice/model across services
+            const currentVal = val ?? '';
+            let optionsHtml = `<option value="">(kein Character)</option>`;
+            let matched = false;
+            charactersList.forEach(c => {
+                const isSelected = currentVal === c.id;
+                if (isSelected) matched = true;
+                const voiceTag = c.has_voice ? '🎙️' : '';
+                const modelTag = c.has_model ? '🧊' : '';
+                optionsHtml += `<option value="${c.id}" ${isSelected ? 'selected' : ''}>${c.name} (${c.id}) ${voiceTag}${modelTag}</option>`;
+            });
+            if (currentVal && !matched) {
+                optionsHtml += `<option value="${currentVal}" selected>⚠️ ${currentVal} (nicht gefunden)</option>`;
+            }
+            fieldsHtml += `
+                <div style="display:flex;align-items:center;gap:0.7rem;padding:0.55rem 0;flex-wrap:wrap;border-top:1px solid var(--border-color);margin-top:0.4rem;padding-top:0.6rem;">
+                    <label for="${fieldId}" style="min-width:120px;margin:0;font-weight:600;">${field.label}</label>
+                    <select id="${fieldId}" class="form-input" style="flex:1;min-width:200px;"
+                            onchange="handleCharacterSelect(this.value, '${serviceId}', '${onChangeFn}')">
+                        ${optionsHtml}
+                    </select>
+                    <button type="button" class="btn btn-secondary" style="padding:0.25rem 0.6rem;font-size:0.85em;"
+                            onclick="refreshCharactersList()"
+                            title="Character-Liste neu laden">🔄</button>
+                    ${hintHtml}
+                </div>`;
+            if (!charactersLoaded) { loadCharactersList().then(() => { if (typeof renderICSimple === 'function') renderICSimple(); if (typeof renderSimpleEditors === 'function') renderSimpleEditors(); }); }
+        } else if (field.type === 'character_select_voice') {
+            // Read-only display showing which voice is assigned by the character
+            const charId = getNestedValue(cfg, 'default_character') || getNestedValue(allConfigs['ki_chat'] || {}, 'default_character') || '';
+            const char = charactersList.find(c => c.id === charId);
+            const voiceInfo = char && char.has_voice ? `🎙️ ${char.voice_file}` : '<span style="color:var(--text-muted);">Kein Character / keine Voice</span>';
+            fieldsHtml += `
+                <div style="display:flex;align-items:center;gap:0.7rem;padding:0.35rem 0;flex-wrap:wrap;">
+                    <label style="min-width:120px;margin:0;">${field.label}</label>
+                    <span style="font-size:0.9em;">${voiceInfo}</span>
+                    ${hintHtml}
+                </div>`;
+        } else if (field.type === 'character_select_model') {
+            // Read-only display showing which model is assigned by the character
+            const charId = getNestedValue(cfg, 'default_character') || getNestedValue(allConfigs['ki_chat'] || {}, 'default_character') || '';
+            const char = charactersList.find(c => c.id === charId);
+            const modelInfo = char && char.has_model ? `🧊 ${char.model_file}` : '<span style="color:var(--text-muted);">Kein Character / kein Model</span>';
+            fieldsHtml += `
+                <div style="display:flex;align-items:center;gap:0.7rem;padding:0.35rem 0;flex-wrap:wrap;">
+                    <label style="min-width:120px;margin:0;">${field.label}</label>
+                    <span style="font-size:0.9em;">${modelInfo}</span>
+                    ${hintHtml}
+                </div>`;
         } else {
             fieldsHtml += `
                 <div style="display:flex;align-items:center;gap:0.7rem;padding:0.35rem 0;flex-wrap:wrap;">

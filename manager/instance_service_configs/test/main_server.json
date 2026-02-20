@@ -1,0 +1,40 @@
+{
+  "audio": {
+    "sprecher": "deeliarvt"
+  },
+  "dilara_modes": {
+    "bedanken": {
+      "emotion": "joy"
+    },
+    "begrüßen": {
+      "emotion": "joy"
+    },
+    "verabschieden": {
+      "emotion": "neutral"
+    }
+  },
+  "http": {
+    "block_tts_endpoints": false,
+    "timeout": 120
+  },
+  "microphone": {
+    "allow_partial_match": true,
+    "device_name": "CABLE Output (VB-Audio Virtual Cable)"
+  },
+  "server": {
+    "debug": false,
+    "host": "0.0.0.0",
+    "port": 5000
+  },
+  "services": {
+    "ki_chat": "http://127.0.0.1:5001",
+    "text_to_speech": "http://127.0.0.1:5057",
+    "vroid_emotion": "http://127.0.0.1:5004",
+    "vroid_poser": "http://127.0.0.1:5003"
+  },
+  "stt": {
+    "mode": "vosk",
+    "vosk_log_level": 0,
+    "vosk_model_path": "models\\vosk-model-de-0.21"
+  }
+}

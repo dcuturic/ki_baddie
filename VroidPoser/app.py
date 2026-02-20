@@ -594,11 +594,11 @@ def _idle_motion_loop():
     target_dt = 1.0 / float(max(1, int(IDLE_UPDATE_HZ)))
     t_prev = time.time()
 
-    breath_speed = random.uniform(10.06, 0.12) * float(IDLE_SPEED)
-    breath_phase = random.uniform(10.0, math.pi * 2.0)
+    breath_speed = random.uniform(0.06, 0.12) * float(IDLE_SPEED)
+    breath_phase = random.uniform(0.0, math.pi * 2.0)
 
-    micro_speed = random.uniform(10.10, 0.25) * float(IDLE_SPEED)
-    micro_phase = random.uniform(10.0, math.pi * 2.0)
+    micro_speed = random.uniform(0.10, 0.25) * float(IDLE_SPEED)
+    micro_phase = random.uniform(0.0, math.pi * 2.0)
 
     shift_from = {"Head": (0.0, 0.0, 0.0), "Neck": (0.0, 0.0, 0.0), "Chest": (0.0, 0.0, 0.0), "Spine": (0.0, 0.0, 0.0)}
     shift_to   = {"Head": (0.0, 0.0, 0.0), "Neck": (0.0, 0.0, 0.0), "Chest": (0.0, 0.0, 0.0), "Spine": (0.0, 0.0, 0.0)}
@@ -1105,10 +1105,10 @@ def play_motion_route_random():
         if os.path.isfile(os.path.join(FIGHT_POSE, f))
     ]
 
-    if len(all_files) < 3:
+    if len(all_files) < 6:
         return jsonify({
             "ok": False,
-            "error": "Not enough motion files available"
+            "error": "Not enough motion files available (need at least 6)"
         }), 400
 
     random_files = random.sample(all_files, 6)
@@ -1137,6 +1137,9 @@ def play_pose(name):
     state.idle_motion_enabled = False
     path_txt = os.path.join(POSES_DIR, f"{name}.txt")
     path_json = os.path.join(POSES_DIR, f"{name}.json")
+    # Path traversal protection
+    if not os.path.realpath(path_txt).startswith(os.path.realpath(POSES_DIR)):
+        return jsonify({"ok": False, "error": "Invalid path"}), 403
     path = path_txt if os.path.exists(path_txt) else path_json
     if not os.path.exists(path):
         return jsonify({"ok": False, "error": f"Pose not found: {name} (.txt/.json)"}), 404
@@ -1153,6 +1156,9 @@ def play_pose(name):
 def play_motion_route(name):
     state.idle_motion_enabled = False
     folder = os.path.join(MOVES_DIR, name)
+    # Path traversal protection
+    if not os.path.realpath(folder).startswith(os.path.realpath(MOVES_DIR)):
+        return jsonify({"ok": False, "error": "Invalid path"}), 403
     if not os.path.isdir(folder):
         return jsonify({"ok": False, "error": f"Motion not found: {name}"}), 404
     with state.lock:
@@ -1167,6 +1173,9 @@ def play_motion_route(name):
 def play_motion_routeget(text):
     state.idle_motion_enabled = False
     folder = os.path.join(MOVES_DIR, text)
+    # Path traversal protection
+    if not os.path.realpath(folder).startswith(os.path.realpath(MOVES_DIR)):
+        return jsonify({"ok": False, "error": "Invalid path"}), 403
     if not os.path.isdir(folder):
         return jsonify({"ok": False, "error": f"Motion not found: {text}"}), 404
 

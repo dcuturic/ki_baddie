@@ -131,6 +131,17 @@
     {% endif %}
 </div>
 
+<!-- Service Dependency Graph -->
+<div class="card" style="margin-bottom: 1.5rem;">
+    <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;">
+        <h3>🔗 Service Dependencies</h3>
+        <button class="btn btn-sm btn-secondary" onclick="document.getElementById('depGraph').style.display = document.getElementById('depGraph').style.display === 'none' ? 'block' : 'none'">Toggle</button>
+    </div>
+    <div id="depGraph" style="padding:1rem;overflow-x:auto;">
+        <svg id="depSvg" width="100%" height="220" style="min-width:700px;"></svg>
+    </div>
+</div>
+
 <!-- System Logs -->
 <div class="system-logs">
     <div class="logs-header">
@@ -280,46 +291,94 @@ function switchToInstance(instanceName) {
     }
 }
 
-// Launch instance
+// Launch instance with progress
 async function launchInstance(instanceName) {
     showNotification('Instanz wird gestartet...', 'info');
+    _showProgressBar('Starte Services...');
     try {
         const result = await apiCall(`/api/instance/start/${instanceName}`, { method: 'POST' });
         if (result && result.success) {
-            showNotification(`✅ Services gestartet: ${result.started.length}`, 'success');
+            _updateProgressBar(100, `${result.started.length} Services gestartet`);
+            showNotification(`Services gestartet: ${result.started.length}`, 'success');
             await updateAllServices();
         } else {
-            showNotification('❌ Fehler beim Starten', 'error');
+            _hideProgressBar();
+            showNotification('Fehler beim Starten', 'error');
         }
     } catch (error) {
-        showNotification(`❌ ${error.message}`, 'error');
+        _hideProgressBar();
+        showNotification(`${error.message}`, 'error');
     }
+    setTimeout(_hideProgressBar, 2000);
 }
 
-// Stop instance
+// Stop instance with progress
 async function stopInstance(instanceName) {
     showNotification('Instanz wird gestoppt...', 'info');
+    _showProgressBar('Stoppe Services...');
     try {
         const result = await apiCall(`/api/instance/stop/${instanceName}`, { method: 'POST' });
         if (result && result.success) {
-            showNotification(`✅ Services gestoppt: ${result.stopped.length}`, 'success');
+            _updateProgressBar(100, `${result.stopped.length} Services gestoppt`);
+            showNotification(`Services gestoppt: ${result.stopped.length}`, 'success');
             await updateAllServices();
         } else {
-            showNotification('❌ Fehler beim Stoppen', 'error');
+            _hideProgressBar();
+            showNotification('Fehler beim Stoppen', 'error');
         }
     } catch (error) {
-        showNotification(`❌ ${error.message}`, 'error');
+        _hideProgressBar();
+        showNotification(`${error.message}`, 'error');
     }
+    setTimeout(_hideProgressBar, 2000);
+}
+
+// Progress bar helpers
+function _showProgressBar(text) {
+    let bar = document.getElementById('batch-progress');
+    if (!bar) {
+        bar = document.createElement('div');
+        bar.id = 'batch-progress';
+        bar.innerHTML = `
+            <div style="display:flex;align-items:center;gap:0.75rem;padding:0.75rem 1rem;background:var(--bg-secondary);border:1px solid var(--border-color);border-radius:8px;margin-bottom:1rem;">
+                <div style="flex:1;">
+                    <div id="batch-progress-text" style="font-size:0.85rem;margin-bottom:4px;color:var(--text-secondary);"></div>
+                    <div style="height:6px;background:var(--bg-tertiary);border-radius:3px;overflow:hidden;">
+                        <div id="batch-progress-fill" style="height:100%;background:var(--accent-primary);border-radius:3px;transition:width 0.3s;width:0%;"></div>
+                    </div>
+                </div>
+            </div>`;
+        const content = document.querySelector('.page-content');
+        if (content) content.insertBefore(bar, content.firstChild);
+    }
+    bar.style.display = 'block';
+    document.getElementById('batch-progress-text').textContent = text;
+    document.getElementById('batch-progress-fill').style.width = '30%';
+}
+function _updateProgressBar(pct, text) {
+    const fill = document.getElementById('batch-progress-fill');
+    const txt = document.getElementById('batch-progress-text');
+    if (fill) fill.style.width = pct + '%';
+    if (txt) txt.textContent = text;
+}
+function _hideProgressBar() {
+    const bar = document.getElementById('batch-progress');
+    if (bar) bar.style.display = 'none';
 }
 
 // Show logs
+let _logEventSource = null;
 async function showServiceLogs(serviceId) {
+    // Close existing SSE connection
+    if (_logEventSource) { _logEventSource.close(); _logEventSource = null; }
+
     if (!serviceId) {
         document.getElementById('logsContent').innerHTML = 
-            '<div class="log-entry log-info">Systeminformationen...</div>';
+            '<div class="log-entry log-info">Wähle einen Service um Logs zu sehen</div>';
         return;
     }
     
+    // Load initial logs
     try {
         const logs = await getServiceLogs(serviceId, 100);
         displayLogs(logs);
@@ -327,6 +386,31 @@ async function showServiceLogs(serviceId) {
         document.getElementById('logsContent').innerHTML = 
             `<div class="log-entry log-error">Fehler: ${error.message}</div>`;
     }
+
+    // Open SSE stream for live updates
+    _logEventSource = new EventSource(`/api/stream/logs/${serviceId}?instance=${encodeURIComponent(currentInstanceName)}`);
+    _logEventSource.onmessage = function(event) {
+        try {
+            const data = JSON.parse(event.data);
+            if (data.line) {
+                const container = document.getElementById('logsContent');
+                let level = 'info';
+                if (data.line.includes('ERROR') || data.line.includes('error')) level = 'error';
+                else if (data.line.includes('WARNING') || data.line.includes('warning')) level = 'warning';
+                else if (data.line.includes('SUCCESS') || data.line.includes('success')) level = 'success';
+                const entry = document.createElement('div');
+                entry.className = `log-entry log-${level}`;
+                entry.textContent = data.line;
+                container.appendChild(entry);
+                // Keep only last 200 entries
+                while (container.children.length > 200) container.removeChild(container.firstChild);
+                container.scrollTop = container.scrollHeight;
+            }
+        } catch(e) {}
+    };
+    _logEventSource.onerror = function() {
+        // Silently reconnect handled by browser
+    };
 }
 
 // Display logs
@@ -367,6 +451,75 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
-document.addEventListener('DOMContentLoaded', initializeDashboard);
+document.addEventListener('DOMContentLoaded', function() {
+    initializeDashboard();
+    renderDependencyGraph();
+});
+
+// Render a simple SVG dependency graph
+function renderDependencyGraph() {
+    const svg = document.getElementById('depSvg');
+    if (!svg) return;
+
+    // Define service dependency edges (consumer → provider)
+    const deps = [
+        ['main_server', 'ki_chat'],
+        ['main_server', 'text_to_speech'],
+        ['main_server', 'vroid_poser'],
+        ['main_server', 'vroid_emotion'],
+        ['text_to_speech', 'vroid_emotion'],
+        ['text_to_speech', 'main_server'],
+        ['vroid_emotion', 'web_avatar'],
+        ['vroid_poser', 'web_avatar'],
+        ['ki_chat', 'ollama'],
+    ];
+
+    // Service names to show
+    const allServices = {{ services.keys()|list|tojson }};
+    const knownNodes = new Set(allServices);
+    // Add ollama if referenced
+    deps.forEach(d => { knownNodes.add(d[0]); knownNodes.add(d[1]); });
+    const nodes = Array.from(knownNodes);
+
+    // Layout: position nodes in a row
+    const spacing = Math.max(100, (700 - 40) / nodes.length);
+    const positions = {};
+    nodes.forEach((n, i) => {
+        positions[n] = { x: 40 + i * spacing, y: 100 };
+    });
+
+    // Use two rows for better layout
+    nodes.forEach((n, i) => {
+        positions[n] = { x: 60 + (i % Math.ceil(nodes.length / 2)) * 140, y: i < Math.ceil(nodes.length / 2) ? 50 : 160 };
+    });
+
+    let html = '';
+    // Draw edges
+    deps.forEach(([from, to]) => {
+        const pf = positions[from];
+        const pt = positions[to];
+        if (pf && pt) {
+            html += `<line x1="${pf.x}" y1="${pf.y}" x2="${pt.x}" y2="${pt.y}" stroke="var(--text-muted)" stroke-width="1.5" stroke-dasharray="4,3" marker-end="url(#arrowhead)"/>`;
+        }
+    });
+
+    // Arrowhead marker
+    html = `<defs><marker id="arrowhead" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="var(--text-muted)"/></marker></defs>` + html;
+
+    // Draw nodes
+    const statusMap = serviceStatuses || {};
+    nodes.forEach(n => {
+        const p = positions[n];
+        if (!p) return;
+        const st = statusMap[n];
+        const running = st && st.status === 'running';
+        const color = running ? 'var(--accent-success)' : 'var(--accent-danger)';
+        html += `<circle cx="${p.x}" cy="${p.y}" r="18" fill="var(--bg-tertiary)" stroke="${color}" stroke-width="2.5"/>`;
+        html += `<text x="${p.x}" y="${p.y + 32}" text-anchor="middle" fill="var(--text-secondary)" font-size="10">${n.replace('_', ' ')}</text>`;
+        html += `<circle cx="${p.x + 13}" cy="${p.y - 13}" r="4" fill="${color}"/>`;
+    });
+
+    svg.innerHTML = html;
+}
 </script>
 {% endblock %}

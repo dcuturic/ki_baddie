@@ -1,0 +1,16 @@
+{
+  "gpu": {
+    "cuda_device": 0
+  },
+  "model": {
+    "context_length": 4096,
+    "keep_alive": "-1",
+    "load_timeout": "15m",
+    "max_loaded_models": 1,
+    "threads": 8
+  },
+  "server": {
+    "host": "127.0.0.1",
+    "port": 11434
+  }
+}

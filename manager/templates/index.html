@@ -62,6 +62,9 @@
                 <button class="btn btn-small btn-secondary" onclick="editInstanceModal(event, '{{ instance.filename }}')">
                     ✏️ Bearbeiten
                 </button>
+                <button class="btn btn-small btn-secondary" onclick="cloneInstance(event, '{{ instance.filename }}')" title="Instanz klonen">
+                    📋 Klonen
+                </button>
             </div>
         </div>
         {% endfor %}
@@ -531,6 +534,22 @@ function renderSimpleEditors() {
     if (!container) return;
     container.innerHTML = '';
 
+    // ── Global Settings Card (top of Simple mode) ──
+    const globalHtml = buildGlobalSettingsHtml(pendingServiceConfigs || {}, 'simpleFieldChanged');
+    if (globalHtml) {
+        const globalCard = document.createElement('div');
+        globalCard.style.cssText = 'margin-bottom:1.2rem;padding:1rem;border:2px solid var(--accent-primary);border-radius:10px;background:rgba(124,58,237,0.04);';
+        globalCard.innerHTML = `
+            <h3 style="margin:0 0 0.6rem 0;color:var(--accent-primary);font-size:1.05rem;">⚡ Globale Einstellungen</h3>
+            <p style="margin:0 0 0.7rem 0;font-size:0.8rem;color:var(--text-muted);">Einmal setzen – wird automatisch überall angewendet</p>
+            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:0.3rem 1.5rem;">
+                ${globalHtml}
+            </div>
+        `;
+        container.appendChild(globalCard);
+    }
+
+    // ── Per-Service Cards ──
     Object.entries(pendingServiceConfigs || {}).forEach(([serviceId, cfg]) => {
         const card = document.createElement('div');
         card.style.cssText = 'margin-bottom:1rem;padding:0.85rem;border:1px solid var(--border-color);border-radius:8px;';
@@ -561,16 +580,9 @@ function simpleFieldChanged(serviceId, path, value, type) {
     setNestedValue(cfg, path, value);
     pendingServiceConfigs[serviceId] = cfg;
 
-    // If port changed, auto-update service URLs in main_server config
-    if (path === 'server.port' && serviceId !== 'main_server') {
-        const msCfg = pendingServiceConfigs['main_server'];
-        if (msCfg && msCfg.services) {
-            const urlKey = serviceId;
-            const currentUrl = msCfg.services[urlKey];
-            if (typeof currentUrl === 'string') {
-                msCfg.services[urlKey] = currentUrl.replace(/:\d+$/, ':' + value);
-            }
-        }
+    // If port changed, auto-update ALL service URL cross-references
+    if (path === 'server.port') {
+        _propagatePortToUrls(pendingServiceConfigs, serviceId, value);
     }
 
     // If ollama port or host changed, update ki_chat ollama.url
@@ -665,6 +677,7 @@ async function openConfigPreviewModal() {
     try {
         await loadAudioDevices();
         await loadOllamaModels();
+        await loadCharactersList();
         const preview = await apiCall('/api/instance/configs/preview', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -828,6 +841,28 @@ async function updateInstanceStatuses() {
 setInterval(updateInstanceStatuses, 3000);
 updateInstanceStatuses();
 
+// Clone instance
+async function cloneInstance(event, instanceName) {
+    if (event) event.stopPropagation();
+    const newName = prompt('Name für die geklonte Instanz:', `${instanceName}_copy`);
+    if (!newName) return;
+    try {
+        const result = await apiCall(`/api/instance/clone/${encodeURIComponent(instanceName)}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ new_name: newName })
+        });
+        if (result && result.success) {
+            showNotification(result.message || 'Instanz geklont', 'success');
+            setTimeout(() => location.reload(), 1000);
+        } else {
+            showNotification(result.error || 'Fehler beim Klonen', 'error');
+        }
+    } catch(e) {
+        showNotification(e.message, 'error');
+    }
+}
+
 // Explicitly export all onclick-used functions to window
 window.createInstanceFromIndex = createInstanceFromIndex;
 window.editInstanceModal = editInstanceModal;
@@ -841,6 +876,7 @@ window.simpleFieldChanged = simpleFieldChanged;
 window.closeModal = closeModal;
 window.goToInstance = goToInstance;
 window.launchInstance = launchInstance;
+window.cloneInstance = cloneInstance;
 window.deleteInstanceFromIndex = deleteInstanceFromIndex;
 </script>
 {% endblock %}

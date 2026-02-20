@@ -2,7 +2,7 @@
   "server": {
     "host": "0.0.0.0",
     "port": 8050,
-    "debug": true
+    "debug": false
   },
   "default_chat_url": "http://localhost:5001",
   "default_chat_endpoint": "/chat-free",

@@ -1,4 +1,4 @@
-from flask import Flask, jsonify, Response
+from flask import Flask, jsonify, Response, request
 import requests
 import time
 import os
@@ -592,6 +592,281 @@ def call_tts_dilara_get(text):
     return Response(r.content, status=r.status_code, content_type=r.headers.get("Content-Type"))
 
 
+# =================================================
+# SPEED MODE — near-realtime streaming chat+TTS
+# =================================================
+# Bypasses the job queue entirely. Streams from ki_chat,
+# fires TTS on first complete sentence immediately.
+# Emotion is sent in parallel. Designed for <2s first-word latency.
+
+def _speed_fire_tts(text: str, emotion: str):
+    """Fire-and-forget TTS call in background."""
+    try:
+        tts_url = f"{TTS_BASE_URL.rstrip('/')}/tts"
+        payload = {
+            "text": {"value": text, "emotion": emotion},
+            "play_audio": True,
+            "save_wav": False,
+            "speed_mode": True,
+        }
+        requests.post(tts_url, json=payload, timeout=HTTP_TIMEOUT)
+    except Exception as e:
+        print(f"[SPEED] TTS error: {e}", flush=True)
+
+
+def _speed_fire_emotion(emotion: str):
+    """Fire-and-forget emotion call in background."""
+    try:
+        emo_url = f"{VROID_EMOTION_BASE_URL.rstrip('/')}/emotion"
+        requests.post(emo_url, json={"emotion": emotion}, timeout=10)
+    except Exception as e:
+        print(f"[SPEED] Emotion error: {e}", flush=True)
+
+
+def do_speed_logic(text: str):
+    """
+    Speed mode: Stream from ki_chat/chat-speed, fire TTS per sentence.
+    Returns a generator for SSE forwarding.
+    """
+    chat_url = f"{CHAT_BASE_URL.rstrip('/')}/chat-speed"
+
+    first_sentence_sent = False
+    first_emotion_sent = False
+    all_sentences = []
+
+    try:
+        r = requests.post(
+            chat_url,
+            json={"message": text},
+            timeout=HTTP_TIMEOUT,
+            stream=True
+        )
+        r.raise_for_status()
+
+        for line in r.iter_lines():
+            if not line:
+                continue
+            line_str = line.decode("utf-8", errors="replace")
+            if not line_str.startswith("data: "):
+                continue
+            json_str = line_str[6:]
+
+            try:
+                event = json.loads(json_str)
+            except Exception:
+                continue
+
+            # Forward token events for live display
+            if "token" in event:
+                yield f"data: {json_str}\n\n"
+                continue
+
+            # Sentence event — fire TTS immediately
+            if "sentence" in event:
+                sent = event["sentence"]
+                emo = event.get("emotion", "neutral")
+                idx = event.get("index", 0)
+                all_sentences.append({"text": sent, "emotion": emo})
+
+                # Fire TTS for this sentence in background
+                threading.Thread(
+                    target=_speed_fire_tts,
+                    args=(sent, emo),
+                    daemon=True
+                ).start()
+
+                # Fire emotion on first sentence
+                if not first_emotion_sent:
+                    first_emotion_sent = True
+                    threading.Thread(
+                        target=_speed_fire_emotion,
+                        args=(emo,),
+                        daemon=True
+                    ).start()
+
+                first_sentence_sent = True
+                yield f"data: {json_str}\n\n"
+                print(f"[SPEED] 🗣️ S{idx}: {sent[:60]}... [{emo}]", flush=True)
+                continue
+
+            # Done event
+            if event.get("done"):
+                reply = event.get("reply", "")
+                emotion = event.get("emotion", "neutral")
+
+                # If no sentences were fired yet (very short response), fire now
+                if not first_sentence_sent and reply:
+                    threading.Thread(
+                        target=_speed_fire_tts,
+                        args=(reply, emotion),
+                        daemon=True
+                    ).start()
+                    threading.Thread(
+                        target=_speed_fire_emotion,
+                        args=(emotion,),
+                        daemon=True
+                    ).start()
+
+                print(f"[SPEED] ✅ Done: {reply[:80]}... [{emotion}]", flush=True)
+                yield f"data: {json_str}\n\n"
+                break
+
+            # Error event
+            if "error" in event:
+                print(f"[SPEED] ❌ Chat error: {event['error']}", flush=True)
+                yield f"data: {json_str}\n\n"
+                break
+
+    except Exception as e:
+        error_msg = json.dumps({"error": str(e)})
+        print(f"[SPEED] ❌ Stream error: {e}", flush=True)
+        yield f"data: {error_msg}\n\n"
+
+
+@app.get("/speed/<path:text>")
+def speed_chat_get(text):
+    """
+    Speed Mode endpoint — near-realtime streaming chat with auto TTS.
+    Bypasses the job queue. Streams SSE events.
+    
+    Usage: GET /speed/username:nachricht
+    
+    SSE Events:
+      - {"token": "..."} — live token stream
+      - {"sentence": "...", "emotion": "...", "index": N} — completed sentence (TTS fires automatically)
+      - {"done": true, "reply": "...", "emotion": "..."} — final response
+    """
+    if BLOCK_HTTP_TTS_ENDPOINTS:
+        return jsonify({"ok": False, "error": "Endpoint disabled (hotkey-only mode)."}), 403
+
+    print(f"[SPEED] ⚡ Request: {text[:80]}", flush=True)
+
+    return Response(
+        do_speed_logic(text),
+        mimetype="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive"
+        }
+    )
+
+
+@app.get("/speed")
+def speed_chat_query():
+    """
+    Speed Mode endpoint via query parameters — supports all Unicode / special chars.
+    Bypasses the job queue. Streams SSE events.
+
+    Usage:
+      GET /speed?message=username:nachricht
+      GET /speed?username=User&message=Hallo%20wie%20geht%27s%3F
+      GET /speed?username=User&message=Ärger%20mit%20Ü%20und%20ö
+
+    Query params:
+      - message  (required): the chat text (may include "username:" prefix)
+      - username (optional): if provided and message has no ":" prefix, prepended automatically
+    """
+    from urllib.parse import unquote
+    if BLOCK_HTTP_TTS_ENDPOINTS:
+        return jsonify({"ok": False, "error": "Endpoint disabled (hotkey-only mode)."}), 403
+
+    raw = (request.args.get("message") or request.args.get("msg") or request.args.get("text") or "").strip()
+    username = (request.args.get("username") or request.args.get("user") or "").strip()
+
+    if not raw:
+        return jsonify({
+            "ok": False,
+            "error": "No message provided. Use ?message=username:nachricht",
+            "examples": [
+                "/speed?message=testuser:Hallo wie gehts",
+                "/speed?username=testuser&message=Was machst du gerade?",
+                "/speed?message=testuser:Ärger mit Ü und ö",
+            ]
+        }), 400
+
+    if username and ":" not in raw:
+        raw = f"{username}:{raw}"
+
+    print(f"[SPEED] ⚡ Query Request: {raw[:80]}", flush=True)
+
+    return Response(
+        do_speed_logic(raw),
+        mimetype="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive"
+        }
+    )
+
+
+@app.post("/speed")
+def speed_chat_post():
+    """
+    Speed Mode endpoint (POST variant).
+    Body: {"message": "username:nachricht"}  
+    or    {"message": "nachricht", "username": "user"}
+    """
+    if BLOCK_HTTP_TTS_ENDPOINTS:
+        return jsonify({"ok": False, "error": "Endpoint disabled (hotkey-only mode)."}), 403
+
+    data = request.get_json(silent=True) or {}
+    raw = (data.get("message") or "").strip()
+    username = (data.get("username") or "").strip()
+
+    if username and ":" not in raw:
+        raw = f"{username}:{raw}"
+
+    if not raw:
+        return jsonify({"ok": False, "error": "No message provided"}), 400
+
+    # If client wants JSON instead of SSE (e.g. simple integration)
+    if data.get("no_stream"):
+        try:
+            chat_url = f"{CHAT_BASE_URL.rstrip('/')}/chat-speed"
+            r = requests.post(chat_url, json={"message": raw}, timeout=HTTP_TIMEOUT, stream=True)
+            r.raise_for_status()
+            
+            full_reply = ""
+            final_emotion = "neutral"
+            for line in r.iter_lines():
+                if not line:
+                    continue
+                line_str = line.decode("utf-8", errors="replace")
+                if not line_str.startswith("data: "):
+                    continue
+                try:
+                    event = json.loads(line_str[6:])
+                    if event.get("done"):
+                        full_reply = event.get("reply", "")
+                        final_emotion = event.get("emotion", "neutral")
+                        break
+                except Exception:
+                    continue
+
+            # Fire TTS + emotion
+            if full_reply:
+                threading.Thread(target=_speed_fire_tts, args=(full_reply, final_emotion), daemon=True).start()
+                threading.Thread(target=_speed_fire_emotion, args=(final_emotion,), daemon=True).start()
+
+            return jsonify({"ok": True, "reply": full_reply, "emotion": final_emotion, "speed": True})
+        except Exception as e:
+            return jsonify({"ok": False, "error": str(e)}), 500
+
+    print(f"[SPEED] ⚡ POST Request: {raw[:80]}", flush=True)
+
+    return Response(
+        do_speed_logic(raw),
+        mimetype="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive"
+        }
+    )
+
+
 def _proxy_to_poser(method: str, path: str):
     url = f"{VROID_POSER_BASE_URL.rstrip('/')}{path}"
     try:
@@ -668,7 +943,7 @@ def do_call_tts_dilara_free_logic(
         print(f"[WARN] Modus '{modus}' hat keine 'message' in der Config.")
         return None
 
-    final_message = message_template.format(text=text)
+    final_message = message_template.replace("{text}", text)
 
     # 1. Versuch: normaler System Prompt
     r = requests.post(
@@ -686,7 +961,7 @@ def do_call_tts_dilara_free_logic(
     emotion = (emotion_default).strip()
 
     # Anti-Fallback: Modell erzählt "Computerprogramm"
-    bad_markers = ["computerprogramm", "ki", "assistant", "missverständnis"]
+    bad_markers = ["computerprogramm", "eine ki", "als ki", "ich bin ki", "assistant", "missverständnis"]
     if any(m in reply.lower() for m in bad_markers):
         r2 = requests.post(
             chat_url,
@@ -843,6 +1118,7 @@ def _hotkey_loop():
     active = {
         "tts": {"is_recording": False, "stop_event": None, "thread": None},
         "dilara": {"is_recording": False, "stop_event": None, "thread": None},
+        "speed": {"is_recording": False, "stop_event": None, "thread": None},
     }
 
     def is_alt_pressed_from_event(e) -> bool:
@@ -875,6 +1151,11 @@ def _hotkey_loop():
                 if mode == "tts":
                     r = do_call_tts_logic(text)
                     print("HOLD-> call-tts OK", r.status_code, flush=True)
+                elif mode == "speed":
+                    # Speed mode: stream from ki_chat, fire TTS per sentence
+                    for _ in do_speed_logic(text):
+                        pass  # consume the generator — TTS fires inside
+                    print("HOLD-> speed OK", flush=True)
                 else:
                     r2 = do_call_tts_dilara_logic(text)
                     print("HOLD-> dilara OK", r2.status_code, flush=True)
@@ -908,6 +1189,7 @@ def _hotkey_loop():
                 # ALT loslassen -> Aufnahme stoppen (sicher)
                 stop_record("tts")
                 stop_record("dilara")
+                stop_record("speed")
             return
 
         # nur mit ALT
@@ -924,6 +1206,9 @@ def _hotkey_loop():
             if e.scan_code == SC_OE or name == "o":
                 start_record("dilara")
                 return
+            if name == "p":
+                start_record("speed")
+                return
 
         # HOLD STOP
         if e.event_type == "up":
@@ -933,12 +1218,16 @@ def _hotkey_loop():
             if e.scan_code == SC_OE or name == "o":
                 stop_record("dilara")
                 return
+            if name == "p":
+                stop_record("speed")
+                return
 
     keyboard.hook(on_key_event)
 
     print("Hotkeys aktiv (HOLD-TO-TALK):", flush=True)
     print(" - Halte ALT+Ü -> Aufnahme, loslassen -> TTS", flush=True)
     print(" - Halte ALT+Ö -> Aufnahme, loslassen -> Dilara", flush=True)
+    print(" - Halte ALT+P -> Aufnahme, loslassen -> SPEED-Modus (Echtzeit)", flush=True)
     print("Hinweis: Wenn Hotkeys gar nicht reagieren -> Script evtl. als Admin starten.", flush=True)
 
     keyboard.wait()
@@ -954,7 +1243,7 @@ def start_hotkeys():
 # =================================================
 if __name__ == "__main__":
     # Flask Debug startet 2 Prozesse (reloader). Hotkeys/Preload nur im echten Prozess starten:
-    if os.environ.get("WERKZEUG_RUN_MAIN") == "false":
+    if os.environ.get("WERKZEUG_RUN_MAIN") != "true":
         print_audio_devices()
 
         # 1) Vosk Modell direkt laden

@@ -1,0 +1,55 @@
+{
+  "name": "test",
+  "description": "",
+  "services": {
+    "blend_to_vrm": {
+      "enabled": true,
+      "auto_start": false
+    },
+    "fbx_to_vrm": {
+      "enabled": true,
+      "auto_start": false
+    },
+    "glb_to_vrm": {
+      "enabled": true,
+      "auto_start": false
+    },
+    "ki_chat": {
+      "enabled": true,
+      "auto_start": false
+    },
+    "main_server": {
+      "enabled": true,
+      "auto_start": false
+    },
+    "ollama": {
+      "enabled": true,
+      "auto_start": false
+    },
+    "szenario_maker": {
+      "enabled": true,
+      "auto_start": false
+    },
+    "text_to_speech": {
+      "enabled": true,
+      "auto_start": false
+    },
+    "voice_chat": {
+      "enabled": true,
+      "auto_start": false
+    },
+    "vroid_emotion": {
+      "enabled": true,
+      "auto_start": false
+    },
+    "vroid_poser": {
+      "enabled": true,
+      "auto_start": false
+    },
+    "web_avatar": {
+      "enabled": true,
+      "auto_start": false
+    }
+  },
+  "config_overrides": {}
+}
