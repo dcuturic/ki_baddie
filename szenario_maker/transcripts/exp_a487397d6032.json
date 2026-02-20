@@ -1,0 +1,152 @@
+{
+  "experiment_id": "exp_a487397d6032",
+  "scenario_name": "neues_szenario",
+  "started_at": "2026-02-19T20:07:26.649967",
+  "finished_at": "2026-02-19T20:09:18.264263",
+  "status": "stopped",
+  "total_rounds": 6,
+  "win_result": null,
+  "messages": [
+    {
+      "turn": 1,
+      "timestamp": "2026-02-19T20:07:42.635503",
+      "sender": "KI 1",
+      "sender_id": "ki_1",
+      "receiver": "KI 2",
+      "receiver_id": "ki_2",
+      "channel": "ch_1",
+      "text": "Hey Alex, wie geht's? Was hast du so Besonderes vor, heute Abend zu streamen?",
+      "emotion": "neutral",
+      "forbidden_word_detected": null
+    },
+    {
+      "turn": 2,
+      "timestamp": "2026-02-19T20:08:01.146184",
+      "sender": "KI 2",
+      "sender_id": "ki_2",
+      "receiver": "KI 1",
+      "receiver_id": "ki_1",
+      "channel": "ch_2",
+      "text": "Hehe, dilara! Ich bin bereit für ein bisschen Action und Abenteuer. Heute Abend werde ich mich mit einem neuen Spiel beschäftigen, das ich schon länger auf dem Schirm habe. Es ist ein neues Open-World-Spiel, das mich mit seiner Welt und den Herausforderungen noch nicht so sehr überfordert hat",
+      "emotion": "neutral",
+      "forbidden_word_detected": null
+    },
+    {
+      "turn": 3,
+      "timestamp": "2026-02-19T20:08:19.740399",
+      "sender": "KI 1",
+      "sender_id": "ki_1",
+      "receiver": "KI 2",
+      "receiver_id": "ki_2",
+      "channel": "ch_1",
+      "text": "Ich dachte, du hättest dich geäußert! Okay, ich werde es noch einmal versuchen: Wie ist das neue Spiel? Hat es eine interessante Geschichte oder ein faszinierendes Gameplay? Ich bin gespannt, mehr darüber zu erfahren",
+      "emotion": "neutral",
+      "forbidden_word_detected": null
+    },
+    {
+      "turn": 4,
+      "timestamp": "2026-02-19T20:08:38.769169",
+      "sender": "KI 2",
+      "sender_id": "ki_2",
+      "receiver": "KI 1",
+      "receiver_id": "ki_1",
+      "channel": "ch_2",
+      "text": "Ich denke, es ist Zeit für mich zur Ruhe zu kommen! Heute Abend werde ich mein neues Open-World-Spiel spielen, und ich bin super gespannt darauf. Es hat eine wirklich faszinierende Welt und ein interessantes Gameplay, das mich noch nicht so sehr überfordert hat. Ich denke, es wird ein großartiger Stream werden!",
+      "emotion": "neutral",
+      "forbidden_word_detected": null
+    },
+    {
+      "turn": 5,
+      "timestamp": "2026-02-19T20:08:58.032083",
+      "sender": "KI 1",
+      "sender_id": "ki_1",
+      "receiver": "KI 2",
+      "receiver_id": "ki_2",
+      "channel": "ch_1",
+      "text": "Ahah, okay! Ich denke, ich habe endlich deine Antwort erhalten! Es ist großartig, dass du dich entschieden hast, dein neues Open-World-Spiel zu spielen. Ich bin wirklich gespannt darauf, es selbst auszuprobieren. Kannst du mir mehr über die Welt und das Gameplay erzählen? Was macht dich so optimistisch in Bezug auf einen \"großartigen Stream\"?",
+      "emotion": "neutral",
+      "forbidden_word_detected": null
+    },
+    {
+      "turn": 6,
+      "timestamp": "2026-02-19T20:09:17.263672",
+      "sender": "KI 2",
+      "sender_id": "ki_2",
+      "receiver": "KI 1",
+      "receiver_id": "ki_1",
+      "channel": "ch_2",
+      "text": "Ahah, okay! Ich denke, es ist Zeit für mich zu erklären, warum ich so optimistisch bin. Mein neues Open-World-Spiel bietet eine enorme Freiheit in der Welt und ein Gameplay, das mich wirklich anspricht. Es gibt zahlreiche Möglichkeiten, sich auf die eigene Weise durch die Spielwelt zu bewegen und die Herausforderungen zu meistern. Ich bin sicher, dass es ein großartiger Stream werden wird!",
+      "emotion": "neutral",
+      "forbidden_word_detected": null
+    }
+  ],
+  "scenario": {
+    "channels": [
+      {
+        "id": "ch_1",
+        "from": "ki_1",
+        "to": "ki_2",
+        "interval_seconds": 10,
+        "start_delay_seconds": 0,
+        "initial_message": "",
+        "listeners": [],
+        "memory_shared_with": [
+          "ki_2"
+        ]
+      },
+      {
+        "id": "ch_2",
+        "from": "ki_2",
+        "to": "ki_1",
+        "interval_seconds": 10,
+        "start_delay_seconds": 0,
+        "initial_message": "",
+        "listeners": [],
+        "memory_shared_with": [
+          "ki_1"
+        ]
+      }
+    ],
+    "description": "",
+    "forbidden_words": {
+      "ki_2": []
+    },
+    "name": "Neues Szenario",
+    "participants": [
+      {
+        "id": "ki_1",
+        "name": "KI 1",
+        "chat_url": "http://localhost:5001",
+        "chat_endpoint": "/chat-free",
+        "system_prompt": "",
+        "use_emotion_pyramid": true,
+        "enable_tts": true,
+        "enable_vroid_emotion": true,
+        "character_name": "dilara",
+        "chat_username": "dilara"
+      },
+      {
+        "id": "ki_2",
+        "name": "KI 2",
+        "chat_url": "http://localhost:5001",
+        "chat_endpoint": "/chat-free",
+        "system_prompt": "",
+        "use_emotion_pyramid": true,
+        "enable_tts": true,
+        "enable_vroid_emotion": true,
+        "character_name": "alex",
+        "chat_username": "alex"
+      }
+    ],
+    "settings": {
+      "max_rounds": 100,
+      "timeout_seconds": 60,
+      "history_window": 8,
+      "default_chat_url": "http://localhost:5001",
+      "tts_url": "http://localhost:5057",
+      "vroid_emotion_url": "http://localhost:5004",
+      "direct_dialog": true
+    },
+    "win_conditions": []
+  }
+}

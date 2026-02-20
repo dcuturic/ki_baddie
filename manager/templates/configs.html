@@ -1,38 +1,34 @@
 {% extends "base.html" %}
 
-{% block page_title %}Configs{% endblock %}
-{% block page_subtitle %}Zentrale Konfigurationsverwaltung{% endblock %}
+{% block page_title %}Einstellungen{% endblock %}
+{% block page_subtitle %}Service-Konfigurationen bearbeiten{% endblock %}
 
 {% block content %}
 <div class="configs-layout">
     <!-- Config Selector -->
     <div class="config-selector">
+        <h3>Instanz</h3>
+        <div style="padding: 0 0.5rem 1rem;">
+            <select id="instanceSelector" onchange="changeConfigInstance(this.value)" style="width:100%;padding:0.5rem;border-radius:6px;border:2px solid var(--accent-primary);background:var(--bg-secondary);color:var(--text-primary);cursor:pointer;">
+                {% for inst in instances %}
+                <option value="{{ inst.filename }}" {% if inst.filename == current_instance_name %}selected{% endif %}>
+                    {{ inst.name }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
         <h3>Config-Dateien</h3>
         <div class="config-list">
             <div class="config-item active" onclick="selectConfig('manager')">
                 <span class="config-icon">⚙️</span>
                 <span class="config-name">Manager</span>
             </div>
-            <div class="config-item" onclick="selectConfig('ki_chat')">
-                <span class="config-icon">💬</span>
-                <span class="config-name">KI Chat</span>
+            {% for service_id, service in config.services.items() %}
+            <div class="config-item" onclick="selectConfig('{{ service_id }}')">
+                <span class="config-icon">{{ service.icon or '📦' }}</span>
+                <span class="config-name">{{ service.name or service_id }}</span>
             </div>
-            <div class="config-item" onclick="selectConfig('main_server')">
-                <span class="config-icon">🎯</span>
-                <span class="config-name">Main Server</span>
-            </div>
-            <div class="config-item" onclick="selectConfig('text_to_speech')">
-                <span class="config-icon">🔊</span>
-                <span class="config-name">Text-to-Speech</span>
-            </div>
-            <div class="config-item" onclick="selectConfig('vroid_poser')">
-                <span class="config-icon">🎭</span>
-                <span class="config-name">VRoid Poser</span>
-            </div>
-            <div class="config-item" onclick="selectConfig('vroid_emotion')">
-                <span class="config-icon">😊</span>
-                <span class="config-name">VRoid Emotion</span>
-            </div>
+            {% endfor %}
         </div>
     </div>
     
@@ -104,6 +100,8 @@
 
 {% block scripts %}
 <script>
+const currentInstanceName = '{{ current_instance_name }}';
+
 // Auto-validate JSON on input
 document.addEventListener('DOMContentLoaded', () => {
     const editor = document.getElementById('config-editor');
@@ -117,6 +115,16 @@ document.addEventListener('DOMContentLoaded', () => {
         selectConfig('manager');
     }
 });
+
+function changeConfigInstance(instanceName) {
+    if (instanceName) {
+        window.currentInstanceName = instanceName;
+        // Reload current config for new instance
+        if (currentEditingConfig && currentEditingConfig !== 'manager') {
+            selectConfig(currentEditingConfig);
+        }
+    }
+}
 
 // Validate JSON in editor
 function validateConfigJSON() {
@@ -167,14 +175,14 @@ function updateEditorInfo() {
     if (sizeEl) sizeEl.textContent = size + ' KB';
 }
 
-// Override selectConfig to use main.js version with additional validation
-const originalSelectConfig = selectConfig;
+// Override selectConfig to use instance-aware config loading
 async function selectConfig(configName) {
     const editor = document.getElementById('config-editor');
     if (editor && editor.value !== '') {
         try {
             const currentConfig = JSON.parse(editor.value);
-            const newConfig = await getConfig(configName);
+            const inst = document.getElementById('instanceSelector')?.value || currentInstanceName;
+            const newConfig = await getConfig(configName, inst);
             if (JSON.stringify(currentConfig) !== JSON.stringify(newConfig)) {
                 if (!confirm('Ungespeicherte Änderungen gehen verloren. Fortfahren?')) {
                     return;
@@ -190,36 +198,61 @@ async function selectConfig(configName) {
         item.classList.remove('active');
     });
     if (event && event.target) {
-        event.target.closest('.config-item').classList.add('active');
+        const item = event.target.closest('.config-item');
+        if (item) item.classList.add('active');
     }
     
-    // Load new config using main.js function
+    // Load new config using instance-aware function
     currentEditingConfig = configName;
-    const config = await getConfig(configName);
-    const names = {
-        'manager': 'Manager Config',
-        'ki_chat': 'KI Chat Config',
-        'main_server': 'Main Server Config',
-        'text_to_speech': 'Text-to-Speech Config',
-        'vroid_poser': 'VRoid Poser Config',
-        'vroid_emotion': 'VRoid Emotion Config'
-    };
+    const inst = document.getElementById('instanceSelector')?.value || currentInstanceName;
+    window.currentInstanceName = inst;
+    const config = await getConfig(configName, inst);
     
     editor.value = JSON.stringify(config, null, 2);
-    document.getElementById('editor-title').textContent = names[configName] || configName;
+    document.getElementById('editor-title').textContent = configName === 'manager' 
+        ? 'Manager Config' 
+        : `${configName} Config (${inst})`;
     
-    const serviceNames = {
-        'manager': 'manager/config.json',
-        'ki_chat': 'ki_chat/config.json',
-        'main_server': 'main_server/config.json',
-        'text_to_speech': 'textToSpeech/config.json',
-        'vroid_poser': 'VroidPoser/config.json',
-        'vroid_emotion': 'VroidEmotion/config.json'
-    };
-    document.getElementById('config-path').textContent = serviceNames[configName] || 'config.json';
+    // Resolve config path display
+    if (configName === 'manager') {
+        document.getElementById('config-path').textContent = 'manager/config.json';
+    } else {
+        document.getElementById('config-path').textContent = `instance_service_configs/${inst}/${configName}.json`;
+    }
     
     updateEditorInfo();
     validateConfigJSON();
+}
+
+// Save config
+async function saveConfig() {
+    const editor = document.getElementById('config-editor');
+    if (!editor) return;
+    
+    try {
+        const parsed = JSON.parse(editor.value);
+        const inst = document.getElementById('instanceSelector')?.value || currentInstanceName;
+        window.currentInstanceName = inst;
+        await saveConfiguration(currentEditingConfig, parsed, inst);
+    } catch (e) {
+        showNotification('❌ Ungültiges JSON: ' + e.message, 'error');
+    }
+}
+
+// Reload config
+async function reloadConfig() {
+    if (currentEditingConfig) {
+        const active = document.querySelector('.config-item.active');
+        // Force reload
+        const inst = document.getElementById('instanceSelector')?.value || currentInstanceName;
+        window.currentInstanceName = inst;
+        const config = await getConfig(currentEditingConfig, inst);
+        const editor = document.getElementById('config-editor');
+        editor.value = JSON.stringify(config, null, 2);
+        updateEditorInfo();
+        validateConfigJSON();
+        showNotification('Config neu geladen', 'success');
+    }
 }
 
 // Custom notification style for configs

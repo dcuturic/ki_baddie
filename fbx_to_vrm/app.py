@@ -20,6 +20,7 @@ Nutzung:
 
 import os
 import sys
+import io
 import json
 import time
 import uuid
@@ -29,6 +30,19 @@ import subprocess
 import threading
 from datetime import datetime
 from typing import Dict, Any, Optional
+
+# ===== Bulletproof Windows UTF-8 fix (ä, ö, ü, ß etc.) =====
+os.environ["PYTHONIOENCODING"] = "utf-8"
+os.environ["PYTHONUTF8"] = "1"
+try:
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+except Exception:
+    try:
+        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+        sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+    except Exception:
+        pass
 
 from flask import Flask, request, jsonify, send_file, render_template_string
 
@@ -101,6 +115,7 @@ def add_job_log(job_id: str, message: str):
 
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 500 * 1024 * 1024  # 500 MB max
+app.json.ensure_ascii = False
 
 
 # ======================= CONVERSION =======================

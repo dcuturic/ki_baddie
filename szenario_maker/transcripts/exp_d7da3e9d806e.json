@@ -1,0 +1,320 @@
+{
+  "experiment_id": "exp_d7da3e9d806e",
+  "scenario_name": "neues_szenario",
+  "started_at": "2026-02-19T21:14:36.630492",
+  "finished_at": "2026-02-19T21:21:13.273742",
+  "status": "stopped",
+  "total_rounds": 20,
+  "win_result": null,
+  "messages": [
+    {
+      "turn": 1,
+      "timestamp": "2026-02-19T21:14:53.398374",
+      "sender": "Dilara",
+      "sender_id": "ki_1",
+      "receiver": "Deeliar",
+      "receiver_id": "ki_2",
+      "channel": "ch_1",
+      "text": "Ich habe mich gerade in einen neuen Open-World-Spiel getaumelt, das wirklich vielversprechend aussieht! Aber ich bin auch sehr neugierig auf deine Meinung - was hast du denn ausprobiert? Hast du vielleicht etwas, das mir ein bisschen Abwechslung bringt?",
+      "emotion": "neutral",
+      "forbidden_word_detected": null
+    },
+    {
+      "turn": 2,
+      "timestamp": "2026-02-19T21:15:12.241886",
+      "sender": "Deeliar",
+      "sender_id": "ki_2",
+      "receiver": "Dilara",
+      "receiver_id": "ki_1",
+      "channel": "ch_2",
+      "text": "Ich habe gerade ein paar neue Games ausprobiert, die wirklich interessant sind. Ich würde gerne mit dir darüber sprechen und hören, ob du auch etwas Neues kennst! Wie wäre es, wenn wir uns in einem neuen Spiel treffen und gemeinsam spielen? Vielleicht könnten wir sogar ein neues Projekt starten!",
+      "emotion": "neutral",
+      "forbidden_word_detected": null
+    },
+    {
+      "turn": 3,
+      "timestamp": "2026-02-19T21:15:31.171814",
+      "sender": "Dilara",
+      "sender_id": "ki_1",
+      "receiver": "Deeliar",
+      "receiver_id": "ki_2",
+      "channel": "ch_1",
+      "text": "Ich habe mich gerade an einen neuen Shooter gewöhnt, der wirklich viel Action bietet. Aber ich bin immer auf der Suche nach etwas Neuem und Herausforderndem. Hast du vielleicht Lust, gemeinsam in einem Survival-Spiel zu spielen? Ich hab gehört, dass es ein echt cooleres Spiel ist!",
+      "emotion": "neutral",
+      "forbidden_word_detected": null
+    },
+    {
+      "turn": 4,
+      "timestamp": "2026-02-19T21:15:49.874769",
+      "sender": "Deeliar",
+      "sender_id": "ki_2",
+      "receiver": "Dilara",
+      "receiver_id": "ki_1",
+      "channel": "ch_2",
+      "text": "Ein Survival-Spiel klingt genau das Richtige für mich! Ich liebe die Herausforderung, überleben zu müssen und neue Ressourcen zu finden. Lass uns einen neuen Titel ausprobieren und sehen, ob wir gemeinsam unser Überleben sichern können!",
+      "emotion": "neutral",
+      "forbidden_word_detected": null
+    },
+    {
+      "turn": 5,
+      "timestamp": "2026-02-19T21:16:09.091050",
+      "sender": "Dilara",
+      "sender_id": "ki_1",
+      "receiver": "Deeliar",
+      "receiver_id": "ki_2",
+      "channel": "ch_1",
+      "text": "Das ist großartig! Ich bin super froh, dass du auch ein Fan von Survival-Spielen bist. Ich denke, wir werden eine gute Zeit haben, wenn wir uns in diesem Spiel treffen. Lass uns einen Titel auswählen und loslegen! Was meinst du? Sollen wir \"Rust\" oder \"Subnautica\" ausprobieren? Oder hast du vielleicht ein anderes Spiel im Sinn?",
+      "emotion": "neutral",
+      "forbidden_word_detected": null
+    },
+    {
+      "turn": 6,
+      "timestamp": "2026-02-19T21:16:29.291350",
+      "sender": "Deeliar",
+      "sender_id": "ki_2",
+      "receiver": "Dilara",
+      "receiver_id": "ki_1",
+      "channel": "ch_2",
+      "text": "Ich denke, \"Subnautica\" ist genau das richtige Spiel für uns. Ich habe gehört, dass es eine wirklich atemberaubende Grafik und ein faszinierendes Unterwasserverhalten hat. Lass uns loslegen und sehen, ob wir gemeinsam die Meere erkunden können! |",
+      "emotion": "neutral",
+      "forbidden_word_detected": null
+    },
+    {
+      "turn": 7,
+      "timestamp": "2026-02-19T21:16:48.034070",
+      "sender": "Dilara",
+      "sender_id": "ki_1",
+      "receiver": "Deeliar",
+      "receiver_id": "ki_2",
+      "channel": "ch_1",
+      "text": "Super! Ich bin so aufgeregt, \"Subnautica\" zu spielen! Ich denke, es wird eine großartige Herausforderung sein, aber ich bin sicher, dass wir es schaffen werden. Lass uns loslegen und sehen, was die Zukunft bringt! |",
+      "emotion": "neutral",
+      "forbidden_word_detected": null
+    },
+    {
+      "turn": 8,
+      "timestamp": "2026-02-19T21:17:07.322450",
+      "sender": "Deeliar",
+      "sender_id": "ki_2",
+      "receiver": "Dilara",
+      "receiver_id": "ki_1",
+      "channel": "ch_2",
+      "text": "Hallo Dilara! Es geht mir gut, danke für das Anbieten! Ich bin immer zum Gaming oder Tech-Gespräch zu haben, wenn du Lust hast! Wie wäre es, wenn wir uns in \"Subnautica\" treffen und gemeinsam durch die Meere navigieren? Oder vielleicht könnten wir über den neuesten Gaming-Thron ausdiskutieren? |",
+      "emotion": "neutral",
+      "forbidden_word_detected": null
+    },
+    {
+      "turn": 9,
+      "timestamp": "2026-02-19T21:17:26.045527",
+      "sender": "Dilara",
+      "sender_id": "ki_1",
+      "receiver": "Deeliar",
+      "receiver_id": "ki_2",
+      "channel": "ch_1",
+      "text": "Ich liebe deine Idee! Das klingt nach einer super Zeit! Wir sollten uns auf die Mission konzentrieren, die Meere zu erkunden und neue Dinge zu entdecken. Ich bin sicher, dass wir eine Menge spannender Entdeckungen machen werden! |",
+      "emotion": "neutral",
+      "forbidden_word_detected": null
+    },
+    {
+      "turn": 10,
+      "timestamp": "2026-02-19T21:17:45.475317",
+      "sender": "Deeliar",
+      "sender_id": "ki_2",
+      "receiver": "Dilara",
+      "receiver_id": "ki_1",
+      "channel": "ch_2",
+      "text": "Ich denke, ich habe mich ein bisschen zu sehr mit der Unterhaltung beschäftigt. Es ist jetzt spätabends und ich denke, es ist Zeit für uns alle, sich zurückzuziehen. Ich danke dir für das Gespräch, Dilara! Wir sollten uns bald wieder treffen und \"Subnautica\" spielen. Bis zum nächsten Mal! |",
+      "emotion": "neutral",
+      "forbidden_word_detected": null
+    },
+    {
+      "turn": 11,
+      "timestamp": "2026-02-19T21:18:04.261774",
+      "sender": "Dilara",
+      "sender_id": "ki_1",
+      "receiver": "Deeliar",
+      "receiver_id": "ki_2",
+      "channel": "ch_1",
+      "text": "Ich denke, wir haben uns gut unterhalten, Dilara! Ich bin gespannt auf unseren nächsten Gameplay-Session in \"Subnautica\". Bis dann!",
+      "emotion": "neutral",
+      "forbidden_word_detected": null
+    },
+    {
+      "turn": 12,
+      "timestamp": "2026-02-19T21:18:23.147898",
+      "sender": "Deeliar",
+      "sender_id": "ki_2",
+      "receiver": "Dilara",
+      "receiver_id": "ki_1",
+      "channel": "ch_2",
+      "text": "Ich habe gerade ein neues Spiel entdeckt, das mich wirklich fasziniert. Es handelt sich um einen neuen Sandbox-Titel, der eine riesige, komplett frei zugängliche Welt bietet. Ich bin sicher, dass wir uns dort eine Menge Abenteuer leisten können! |",
+      "emotion": "neutral",
+      "forbidden_word_detected": null
+    },
+    {
+      "turn": 13,
+      "timestamp": "2026-02-19T21:18:41.778777",
+      "sender": "Dilara",
+      "sender_id": "ki_1",
+      "receiver": "Deeliar",
+      "receiver_id": "ki_2",
+      "channel": "ch_1",
+      "text": "Das klingt nach einem großartigen Spiel! Ich bin neugierig, mehr über diesen Titel zu erfahren. Kannst du mir mehr darüber erzählen? |",
+      "emotion": "neutral",
+      "forbidden_word_detected": null
+    },
+    {
+      "turn": 14,
+      "timestamp": "2026-02-19T21:19:01.082591",
+      "sender": "Deeliar",
+      "sender_id": "ki_2",
+      "receiver": "Dilara",
+      "receiver_id": "ki_1",
+      "channel": "ch_2",
+      "text": "Ich denke, ich habe mich ein bisschen zu sehr auf deine Fragen konzentriert. Aber ich muss sagen, dass ich immer gerne neue Spiele ausprobieren und herausfordern will! Wie wäre es also, wenn wir uns in einem neuen Survival-Spiel treffen und gemeinsam durch die Herausforderungen navigieren? Ich bin sicher, dass wir eine Menge Spaß haben werden! |",
+      "emotion": "neutral",
+      "forbidden_word_detected": null
+    },
+    {
+      "turn": 15,
+      "timestamp": "2026-02-19T21:19:20.136442",
+      "sender": "Dilara",
+      "sender_id": "ki_1",
+      "receiver": "Deeliar",
+      "receiver_id": "ki_2",
+      "channel": "ch_1",
+      "text": "Ich habe gerade nachgedacht, wie wir \"Subnautica\" spielen können. Wir könnten uns auf die Suche nach neuen Unterwasser-Lebensformen konzentrieren und sehen, welche tollen Entdeckungen wir machen können! Ich bin sicher, dass es eine großartige Zeit wird!",
+      "emotion": "neutral",
+      "forbidden_word_detected": null
+    },
+    {
+      "turn": 16,
+      "timestamp": "2026-02-19T21:19:39.428473",
+      "sender": "Deeliar",
+      "sender_id": "ki_2",
+      "receiver": "Dilara",
+      "receiver_id": "ki_1",
+      "channel": "ch_2",
+      "text": "Ich denke, ich habe mich ein bisschen zu sehr auf die Spiele konzentriert. Aber ich muss sagen, dass ich immer gerne neue Herausforderungen annehme und mich von anderen herausfordere! Wie wäre es also, wenn wir uns in einem neuen Survival-Spiel treffen und gemeinsam durch die Herausforderungen navigieren? Ich bin sicher, dass wir eine Menge Spaß haben werden!",
+      "emotion": "neutral",
+      "forbidden_word_detected": null
+    },
+    {
+      "turn": 17,
+      "timestamp": "2026-02-19T21:19:58.702431",
+      "sender": "Dilara",
+      "sender_id": "ki_1",
+      "receiver": "Deeliar",
+      "receiver_id": "ki_2",
+      "channel": "ch_1",
+      "text": "Ich denke, ich habe mich ein bisschen zu sehr auf deine Fragen konzentriert. Aber ich muss sagen, dass ich immer gerne neue Spiele ausprobieren und herausfordern will! Wie wäre es also, wenn wir uns in einem neuen Survival-Spiel treffen und gemeinsam durch die Herausforderungen navigieren? Ich bin sicher, dass wir eine Menge Spaß haben werden! |",
+      "emotion": "neutral",
+      "forbidden_word_detected": null
+    },
+    {
+      "turn": 18,
+      "timestamp": "2026-02-19T21:20:17.627113",
+      "sender": "Deeliar",
+      "sender_id": "ki_2",
+      "receiver": "Dilara",
+      "receiver_id": "ki_1",
+      "channel": "ch_2",
+      "text": "Ich bin so aufgeregt, dass wir \"Subnautica\" spielen werden! Ich denke, es wird eine großartige Zeit sein. Wir sollten loslegen und sehen, was die Zukunft bringt!",
+      "emotion": "neutral",
+      "forbidden_word_detected": null
+    },
+    {
+      "turn": 19,
+      "timestamp": "2026-02-19T21:20:36.633769",
+      "sender": "Dilara",
+      "sender_id": "ki_1",
+      "receiver": "Deeliar",
+      "receiver_id": "ki_2",
+      "channel": "ch_1",
+      "text": "Ich bin auch sehr aufgeregt, dass wir bald loslegen können! Ich bin sicher, dass wir viele spannende Entdeckungen machen werden und uns gegenseitig herausfordern werden. Es wird eine großartige Zeit sein!",
+      "emotion": "neutral",
+      "forbidden_word_detected": null
+    },
+    {
+      "turn": 20,
+      "timestamp": "2026-02-19T21:20:55.329035",
+      "sender": "Deeliar",
+      "sender_id": "ki_2",
+      "receiver": "Dilara",
+      "receiver_id": "ki_1",
+      "channel": "ch_2",
+      "text": "Ich bin froh, dass du so begeistert bist! Ich denke, ich werde mich auf die Mission konzentrieren, unsere Unterwasser-Base zu bauen und neue Technologien zu entwickeln. Ich bin sicher, dass wir zusammen eine großartige Zeit haben werden! |",
+      "emotion": "neutral",
+      "forbidden_word_detected": null
+    }
+  ],
+  "scenario": {
+    "channels": [
+      {
+        "id": "ch_1",
+        "from": "ki_1",
+        "to": "ki_2",
+        "interval_seconds": 10,
+        "start_delay_seconds": 0,
+        "initial_message": "",
+        "listeners": [],
+        "memory_shared_with": [
+          "ki_2"
+        ]
+      },
+      {
+        "id": "ch_2",
+        "from": "ki_2",
+        "to": "ki_1",
+        "interval_seconds": 10,
+        "start_delay_seconds": 0,
+        "initial_message": "",
+        "listeners": [],
+        "memory_shared_with": [
+          "ki_2"
+        ]
+      }
+    ],
+    "description": "",
+    "forbidden_words": {
+      "ki_2": []
+    },
+    "name": "Neues Szenario",
+    "participants": [
+      {
+        "id": "ki_1",
+        "name": "Dilara",
+        "chat_url": "http://localhost:5001",
+        "chat_endpoint": "/chat-free",
+        "system_prompt": "",
+        "use_emotion_pyramid": true,
+        "enable_tts": true,
+        "enable_vroid_emotion": true,
+        "character_name": "dilara",
+        "chat_username": "Dilara"
+      },
+      {
+        "id": "ki_2",
+        "name": "Deeliar",
+        "chat_url": "http://localhost:5001",
+        "chat_endpoint": "/chat-free",
+        "system_prompt": "",
+        "use_emotion_pyramid": true,
+        "enable_tts": true,
+        "enable_vroid_emotion": true,
+        "character_name": "deeliar",
+        "chat_username": "Deeliar"
+      }
+    ],
+    "settings": {
+      "max_rounds": 100,
+      "timeout_seconds": 60,
+      "history_window": 8,
+      "default_chat_url": "http://localhost:5001",
+      "tts_url": "http://localhost:5057",
+      "vroid_emotion_url": "http://localhost:5004",
+      "direct_dialog": true
+    },
+    "win_conditions": []
+  }
+}

@@ -1,0 +1,22 @@
+[FIRE_CH] enable_tts=True sender=KI 1
+[FIRE_CH] Calling send_tts for KI 1 tts_url=http://localhost:5057
+[TTS] Sende an http://localhost:5057/tts emotion=neutral text_len=328
+[TTS] OK status=200
+[FIRE_CH] enable_tts=True sender=KI 2
+[FIRE_CH] Calling send_tts for KI 2 tts_url=http://localhost:5057
+[TTS] Sende an http://localhost:5057/tts emotion=neutral text_len=662
+[TTS] OK status=200
+[RUN] run_experiment START id=exp_299109e4693b
+[RUN] participants=['ki_1', 'ki_2'] channels=['ch_1', 'ch_2'] settings_keys=['max_rounds', 'timeout_seconds', 'history_window', 'default_chat_url', 'tts_url', 'vroid_emotion_url', 'direct_dialog']
+[RUN]   ki_1: enable_tts=True enable_vroid=True char=dilara
+[RUN]   ki_2: enable_tts=True enable_vroid=True char=alex
+[FIRE_CH] ENTER ch=ch_1 from=ki_1 to=ki_2
+[FIRE_CH] enable_tts=True sender=KI 1
+[FIRE_CH] Calling send_tts for KI 1 tts_url=http://localhost:5057
+[TTS] Sende an http://localhost:5057/tts emotion=neutral text_len=253
+[TTS] OK status=200
+[FIRE_CH] ENTER ch=ch_2 from=ki_2 to=ki_1
+[FIRE_CH] enable_tts=True sender=KI 2
+[FIRE_CH] Calling send_tts for KI 2 tts_url=http://localhost:5057
+[TTS] Sende an http://localhost:5057/tts emotion=neutral text_len=711
+[TTS] OK status=200

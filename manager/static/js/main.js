@@ -67,9 +67,11 @@ async function apiCall(url, options = {}) {
 /**
  * Get all services status
  */
-async function getServicesStatus() {
+async function getServicesStatus(instanceName) {
     try {
-        const result = await apiCall('/api/status/all');
+        const inst = instanceName || window.currentInstanceName;
+        const url = inst ? `/api/status/all?instance=${encodeURIComponent(inst)}` : '/api/status/all';
+        const result = await apiCall(url);
         return result.services || {};
     } catch (error) {
         console.error('Error fetching statuses:', error);
@@ -106,12 +108,13 @@ async function getInstance(instanceName) {
 /**
  * Start service
  */
-async function startService(serviceId) {
+async function startService(serviceId, instanceName) {
     try {
-        const result = await apiCall('/api/service/start', {
+        const inst = instanceName || window.currentInstanceName;
+        if (!inst) { showNotification('Keine Instanz ausgewählt', 'error'); return { success: false }; }
+        const result = await apiCall(`/api/service/${encodeURIComponent(inst)}/${serviceId}/start`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ service_id: serviceId })
+            headers: { 'Content-Type': 'application/json' }
         });
         if (result.success) {
             showNotification(`Service "${serviceId}" gestartet`, 'success');
@@ -129,12 +132,13 @@ async function startService(serviceId) {
 /**
  * Stop service
  */
-async function stopService(serviceId) {
+async function stopService(serviceId, instanceName) {
     try {
-        const result = await apiCall('/api/service/stop', {
+        const inst = instanceName || window.currentInstanceName;
+        if (!inst) { showNotification('Keine Instanz ausgewählt', 'error'); return { success: false }; }
+        const result = await apiCall(`/api/service/${encodeURIComponent(inst)}/${serviceId}/stop`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ service_id: serviceId })
+            headers: { 'Content-Type': 'application/json' }
         });
         if (result.success) {
             showNotification(`Service "${serviceId}" gestoppt`, 'success');
@@ -152,12 +156,13 @@ async function stopService(serviceId) {
 /**
  * Restart service
  */
-async function restartService(serviceId) {
+async function restartService(serviceId, instanceName) {
     try {
-        const result = await apiCall('/api/service/restart', {
+        const inst = instanceName || window.currentInstanceName;
+        if (!inst) { showNotification('Keine Instanz ausgewählt', 'error'); return { success: false }; }
+        const result = await apiCall(`/api/service/${encodeURIComponent(inst)}/${serviceId}/restart`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ service_id: serviceId })
+            headers: { 'Content-Type': 'application/json' }
         });
         if (result.success) {
             showNotification(`Service "${serviceId}" neu gestartet`, 'success');
@@ -175,10 +180,11 @@ async function restartService(serviceId) {
 /**
  * Start all services
  */
-async function startAllServices() {
-    const statuses = await getServicesStatus();
+async function startAllServices(instanceName) {
+    const inst = instanceName || window.currentInstanceName;
+    const statuses = await getServicesStatus(inst);
     for (const serviceId of Object.keys(statuses)) {
-        await startService(serviceId);
+        await startService(serviceId, inst);
         await new Promise(r => setTimeout(r, 500)); // Delay between starts
     }
 }
@@ -186,10 +192,11 @@ async function startAllServices() {
 /**
  * Stop all services
  */
-async function stopAllServices() {
-    const statuses = await getServicesStatus();
+async function stopAllServices(instanceName) {
+    const inst = instanceName || window.currentInstanceName;
+    const statuses = await getServicesStatus(inst);
     for (const serviceId of Object.keys(statuses)) {
-        await stopService(serviceId);
+        await stopService(serviceId, inst);
         await new Promise(r => setTimeout(r, 500)); // Delay between stops
     }
 }
@@ -197,9 +204,12 @@ async function stopAllServices() {
 /**
  * Get service logs
  */
-async function getServiceLogs(serviceId, lines = 100) {
+async function getServiceLogs(serviceId, lines = 100, instanceName) {
     try {
-        const result = await apiCall(`/api/service/logs/${serviceId}?lines=${lines}`);
+        const inst = instanceName || window.currentInstanceName;
+        let url = `/api/service/logs/${serviceId}?lines=${lines}`;
+        if (inst) url += `&instance=${encodeURIComponent(inst)}`;
+        const result = await apiCall(url);
         return result.logs || '';
     } catch (error) {
         console.error('Error fetching logs:', error);
@@ -286,10 +296,15 @@ async function deleteInstance(instanceName) {
 /**
  * Get configuration
  */
-async function getConfig(serviceId) {
+async function getConfig(serviceId, instanceName) {
     try {
+        const inst = instanceName || window.currentInstanceName;
         if (serviceId === 'manager') {
             const result = await apiCall('/api/config/get');
+            return result.config || {};
+        } else if (inst) {
+            // Instance-aware: load from per-instance service config
+            const result = await apiCall(`/api/instance/${encodeURIComponent(inst)}/config/service/${encodeURIComponent(serviceId)}`);
             return result.config || {};
         } else {
             const result = await apiCall(`/api/config/service/${serviceId}`);
@@ -304,9 +319,19 @@ async function getConfig(serviceId) {
 /**
  * Save configuration
  */
-async function saveConfiguration(serviceId, config) {
+async function saveConfiguration(serviceId, config, instanceName) {
     try {
-        const result = await apiCall(`/api/config/service/${serviceId}/save`, {
+        const inst = instanceName || window.currentInstanceName;
+        let url;
+        if (serviceId === 'manager') {
+            url = '/api/config/service/manager/save';
+        } else if (inst) {
+            // Instance-aware: save to per-instance service config
+            url = `/api/instance/${encodeURIComponent(inst)}/config/service/${encodeURIComponent(serviceId)}/save`;
+        } else {
+            url = `/api/config/service/${serviceId}/save`;
+        }
+        const result = await apiCall(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(config)
@@ -395,7 +420,8 @@ async function selectConfig(configName) {
  * Reload configuration from server
  */
 async function reloadConfig() {
-    const config = await getConfig(currentEditingConfig);
+    const inst = window.currentInstanceName;
+    const config = await getConfig(currentEditingConfig, inst);
     const editor = document.getElementById('config-editor');
     editor.value = JSON.stringify(config, null, 2);
     showNotification('Config neu geladen', 'info');
@@ -408,7 +434,8 @@ async function saveConfig() {
     try {
         const editor = document.getElementById('config-editor');
         const config = JSON.parse(editor.value);
-        const result = await saveConfiguration(currentEditingConfig, config);
+        const inst = window.currentInstanceName;
+        const result = await saveConfiguration(currentEditingConfig, config, inst);
         
         if (result.success) {
             showNotification('Config gespeichert!', 'success');
@@ -670,7 +697,7 @@ async function stopInstance(instanceName) {
         
         for (const [serviceId, settings] of Object.entries(services)) {
             if (settings.enabled) {
-                await stopService(serviceId);
+                await stopService(serviceId, instanceName);
                 stoppedCount++;
             }
         }

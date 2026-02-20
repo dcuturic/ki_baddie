@@ -1,4 +1,6 @@
 import os
+import sys
+import io
 import time
 import threading
 import random
@@ -7,12 +9,26 @@ import json
 from dataclasses import dataclass
 from typing import Dict, List, Tuple
 
+# ===== Bulletproof Windows UTF-8 fix (ä, ö, ü, ß etc.) =====
+os.environ["PYTHONIOENCODING"] = "utf-8"
+os.environ["PYTHONUTF8"] = "1"
+try:
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+except Exception:
+    try:
+        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+        sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+    except Exception:
+        pass
+
 import requests as http_requests
 from flask import Flask, request, jsonify
 from osc4py3.as_eventloop import osc_startup, osc_terminate, osc_udp_client, osc_send, osc_process
 from osc4py3 import oscbuildparse
 
 app = Flask(__name__)
+app.json.ensure_ascii = False
 
 # ======================= CONFIG LOADER =======================
 

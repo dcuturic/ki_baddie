@@ -2,12 +2,38 @@ from flask import Flask, jsonify, Response
 import requests
 import time
 import os
+import sys
+import io
 import threading
 import json
+import queue
+import uuid
+from dataclasses import dataclass, field
 from typing import Dict, Any, Optional
+
+# ===== Bulletproof Windows UTF-8 fix (ä, ö, ü, ß etc.) =====
+os.environ["PYTHONIOENCODING"] = "utf-8"
+os.environ["PYTHONUTF8"] = "1"
+try:
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+except Exception:
+    try:
+        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+        sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+    except Exception:
+        pass
 
 
 app = Flask(__name__)
+app.json.ensure_ascii = False
+
+@app.errorhandler(500)
+def handle_500(e):
+    import traceback
+    traceback.print_exc()
+    print(f"[MAIN_SERVER] 500 ERROR: {e!r}", flush=True)
+    return jsonify({"ok": False, "error": str(e)}), 500
 
 # ======================= CONFIG LOADER =======================
 
@@ -393,6 +419,109 @@ def load_vosk_model_once():
 
 
 # =================================================
+# REQUEST QUEUE SYSTEM
+# =================================================
+# Alle KI/TTS-Requests laufen sequentiell durch eine Queue.
+# Requests werden NIE blockiert oder verworfen.
+# Selbst wenn der HTTP-Client abbricht, läuft der Job weiter.
+
+@dataclass
+class QueuedJob:
+    job_id: str
+    func: object  # callable
+    args: tuple
+    kwargs: dict
+    result: Any = None
+    error: Optional[str] = None
+    done: threading.Event = field(default_factory=threading.Event)
+    status: str = "queued"  # queued, running, done, error
+
+_request_queue: queue.Queue = queue.Queue()
+_job_registry: Dict[str, QueuedJob] = {}
+_registry_lock = threading.Lock()
+
+
+def _queue_worker():
+    """Single worker thread — verarbeitet Requests nacheinander."""
+    while True:
+        job = _request_queue.get()
+        try:
+            job.status = "running"
+            with _registry_lock:
+                waiting = _request_queue.qsize()
+            print(f"[QUEUE] ▶ Job {job.job_id} gestartet (noch {waiting} wartend)", flush=True)
+            job.result = job.func(*job.args, **job.kwargs)
+            job.status = "done"
+            print(f"[QUEUE] ✅ Job {job.job_id} fertig", flush=True)
+        except Exception as e:
+            job.error = str(e)
+            job.status = "error"
+            print(f"[QUEUE] ❌ Job {job.job_id} Fehler: {e}", flush=True)
+        finally:
+            job.done.set()
+            _request_queue.task_done()
+            # Alte Jobs nach 5 Minuten aufräumen
+            def _cleanup(jid):
+                time.sleep(300)
+                with _registry_lock:
+                    _job_registry.pop(jid, None)
+            threading.Thread(target=_cleanup, args=(job.job_id,), daemon=True).start()
+
+
+def enqueue_request(func, *args, **kwargs) -> QueuedJob:
+    """Request in die Queue einreihen. Gibt Job-Objekt zurück."""
+    job_id = uuid.uuid4().hex[:8]
+    job = QueuedJob(job_id=job_id, func=func, args=args, kwargs=kwargs)
+    with _registry_lock:
+        _job_registry[job_id] = job
+    position = _request_queue.qsize() + 1
+    print(f"[QUEUE] 📥 Job {job_id} eingereiht (Position: {position})", flush=True)
+    _request_queue.put(job)
+    return job
+
+
+def _wait_for_job(job: QueuedJob, timeout: int = 300):
+    """
+    Wartet auf Job-Ergebnis. Wenn Timeout erreicht wird,
+    läuft der Job trotzdem weiter im Hintergrund.
+    """
+    job.done.wait(timeout=timeout)
+    if not job.done.is_set():
+        return jsonify({
+            "ok": True,
+            "queued": True,
+            "job_id": job.job_id,
+            "message": "Request wird noch verarbeitet (läuft im Hintergrund weiter)"
+        }), 202
+    if job.error:
+        return jsonify({"ok": False, "error": job.error}), 500
+    return None  # Signal: result ist da, Caller muss es verarbeiten
+
+
+# Queue-Worker starten
+_queue_thread = threading.Thread(target=_queue_worker, daemon=True)
+_queue_thread.start()
+print("[QUEUE] Worker-Thread gestartet ✅", flush=True)
+
+
+@app.get("/queue/status")
+def queue_status():
+    """Zeigt aktuelle Queue-Situation."""
+    with _registry_lock:
+        jobs = []
+        for jid, job in _job_registry.items():
+            jobs.append({
+                "job_id": jid,
+                "status": job.status
+            })
+    return jsonify({
+        "ok": True,
+        "queue_size": _request_queue.qsize(),
+        "jobs": jobs
+    })
+
+
+# =================================================
 # TTS / CHAT HELPERS
 # =================================================
 def split_username_and_text(user_text: str):
@@ -443,22 +572,24 @@ def do_call_tts_dilara_logic(text: str):
 def call_tts_get(text):
     if BLOCK_HTTP_TTS_ENDPOINTS:
         return jsonify({"ok": False, "error": "Endpoint disabled (hotkey-only mode)."}), 403
-    try:
-        r = do_call_tts_logic(text)
-        return Response(r.content, status=r.status_code, content_type=r.headers.get("Content-Type"))
-    except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 500
+    job = enqueue_request(do_call_tts_logic, text)
+    timeout_resp = _wait_for_job(job)
+    if timeout_resp is not None:
+        return timeout_resp
+    r = job.result
+    return Response(r.content, status=r.status_code, content_type=r.headers.get("Content-Type"))
 
 
 @app.get("/call-tts-dilara/<path:text>")
 def call_tts_dilara_get(text):
     if BLOCK_HTTP_TTS_ENDPOINTS:
         return jsonify({"ok": False, "error": "Endpoint disabled (hotkey-only mode)."}), 403
-    try:
-        r2 = do_call_tts_dilara_logic(text)
-        return Response(r2.content, status=r2.status_code, content_type=r2.headers.get("Content-Type"))
-    except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 500
+    job = enqueue_request(do_call_tts_dilara_logic, text)
+    timeout_resp = _wait_for_job(job)
+    if timeout_resp is not None:
+        return timeout_resp
+    r = job.result
+    return Response(r.content, status=r.status_code, content_type=r.headers.get("Content-Type"))
 
 
 def _proxy_to_poser(method: str, path: str):
@@ -579,8 +710,14 @@ def do_call_tts_dilara_free_logic(
 
 
 @app.get("/call-tts-dilara-free/<string:modus>/<path:text>")
-def call_tts_dilara_free_get(text,modus):
-    r = do_call_tts_dilara_free_logic(text,modus)
+def call_tts_dilara_free_get(text, modus):
+    job = enqueue_request(do_call_tts_dilara_free_logic, text, modus)
+    timeout_resp = _wait_for_job(job)
+    if timeout_resp is not None:
+        return timeout_resp
+    r = job.result
+    if r is None:
+        return jsonify({"ok": False, "error": f"Modus '{modus}' nicht gefunden oder keine message konfiguriert."}), 400
     return Response(r.content, status=r.status_code, content_type=r.headers.get("Content-Type"))
 
 

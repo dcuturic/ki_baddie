@@ -15,6 +15,8 @@ Nutzung:
 
 import os
 import json
+import sys
+import io
 import time
 import queue
 import threading
@@ -22,6 +24,19 @@ import traceback
 from datetime import datetime
 from typing import Dict, Any, Optional, List
 from collections import deque
+
+# ===== Bulletproof Windows UTF-8 fix (ä, ö, ü, ß etc.) =====
+os.environ["PYTHONIOENCODING"] = "utf-8"
+os.environ["PYTHONUTF8"] = "1"
+try:
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+except Exception:
+    try:
+        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+        sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+    except Exception:
+        pass
 
 import requests as http_requests
 from flask import Flask, request, jsonify
@@ -81,6 +96,7 @@ AUTO_START = CONFIG.get("auto_start_listening", True)
 # ======================= FLASK =======================
 
 app = Flask(__name__)
+app.json.ensure_ascii = False
 
 # ======================= GLOBALS =======================
 

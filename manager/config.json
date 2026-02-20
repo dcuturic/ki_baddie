@@ -668,6 +668,35 @@
           "path": "/output"
         }
       ]
+    },
+    "szenario_maker": {
+      "name": "Szenario Maker",
+      "path": "../szenario_maker",
+      "script": "app.py",
+      "python_executable": "./.venv/Scripts/python.exe",
+      "type": "python",
+      "icon": "🎬",
+      "color": "#f59e0b",
+      "requests": [
+        {
+          "name": "Szenarien auflisten",
+          "description": "Alle verfügbaren Szenarien anzeigen",
+          "method": "GET",
+          "path": "/api/scenarios"
+        },
+        {
+          "name": "Aktive Experimente",
+          "description": "Alle laufenden Experimente anzeigen",
+          "method": "GET",
+          "path": "/api/experiments"
+        },
+        {
+          "name": "Transkripte",
+          "description": "Alle gespeicherten Transkripte anzeigen",
+          "method": "GET",
+          "path": "/api/transcripts"
+        }
+      ]
     }
   },
   "default_instance": "default"

@@ -1,0 +1,222 @@
+{
+  "experiment_id": "exp_44120505e6fa",
+  "scenario_name": "neues_szenario",
+  "started_at": "2026-02-19T21:58:38.115558",
+  "finished_at": "2026-02-19T22:00:20.035048",
+  "status": "stopped",
+  "total_rounds": 5,
+  "win_result": null,
+  "messages": [
+    {
+      "turn": 1,
+      "timestamp": "2026-02-19T21:58:47.765961",
+      "sender": "Deeliar",
+      "sender_id": "ki_2",
+      "receiver": "Dilara",
+      "receiver_id": "ki_1",
+      "channel": "ch_2",
+      "text": "Hallo deeliar! Es ist ein wunderschöner Abend in Berlin. und ich bin da, um den Himmel zu färben. Ein bisschen Ärger wird es geben, aber keine Sorge, das ist mein Job. Wie geht's dir?",
+      "emotion": "neutral",
+      "forbidden_word_detected": null
+    },
+    {
+      "turn": 2,
+      "timestamp": "2026-02-19T21:59:05.303201",
+      "sender": "TEUFEL",
+      "sender_id": "ki_4",
+      "receiver": "GOTT",
+      "receiver_id": "ki_3",
+      "channel": "ch_4",
+      "text": "Deeliar! Du weißt genau, warum ich hier bin. Ich bin der Teufel und ich komme, um den Frieden zu stören. Aber heute Abend will ich sanft sein. Was möchtest du?",
+      "emotion": "neutral",
+      "forbidden_word_detected": null
+    },
+    {
+      "turn": 3,
+      "timestamp": "2026-02-19T21:59:25.214769",
+      "sender": "GOTT",
+      "sender_id": "ki_3",
+      "receiver": "Dilara",
+      "receiver_id": "ki_1",
+      "channel": "ch_5",
+      "text": "Deeliar, ich denke, wir haben eine gute Basis hier. Aber jetzt ist es an mir, den Teufel, mich zu zeigen. Ich werde dir ein paar Dinge zeigen, die du vielleicht noch nicht kennst. Sei vorsichtig und passte auf dich auf!",
+      "emotion": "neutral",
+      "forbidden_word_detected": null
+    },
+    {
+      "turn": 4,
+      "timestamp": "2026-02-19T21:59:44.952298",
+      "sender": "TEUFEL",
+      "sender_id": "ki_4",
+      "receiver": "Deeliar",
+      "receiver_id": "ki_2",
+      "channel": "ch_6",
+      "text": "Deeliar! Ich bin froh, dass du dich wohlfühlst. Aber jetzt ist es Zeit für mich, dich zu erzählen, wie's in der Hölle so läuft. Ich habe Neuigkeiten.",
+      "emotion": "neutral",
+      "forbidden_word_detected": null
+    },
+    {
+      "turn": 5,
+      "timestamp": "2026-02-19T22:00:06.084417",
+      "sender": "Dilara",
+      "sender_id": "ki_1",
+      "receiver": "Deeliar",
+      "receiver_id": "ki_2",
+      "channel": "ch_1",
+      "text": "Ich entschuldige mich, aber ich bin nur Teufel und du bist nicht Teil des aktuellen Gesprächs. Ich denke, du solltest dich anwärmen, bevor du zu uns stößt.",
+      "emotion": "neutral",
+      "forbidden_word_detected": null
+    }
+  ],
+  "scenario": {
+    "channels": [
+      {
+        "id": "ch_1",
+        "from": "ki_1",
+        "to": "ki_2",
+        "interval_seconds": 20,
+        "start_delay_seconds": 10,
+        "initial_message": "",
+        "listeners": [
+          "ki_3",
+          "ki_4"
+        ],
+        "memory_shared_with": [
+          "ki_2",
+          "ki_3",
+          "ki_4"
+        ]
+      },
+      {
+        "id": "ch_2",
+        "from": "ki_2",
+        "to": "ki_1",
+        "interval_seconds": 20,
+        "start_delay_seconds": 0,
+        "initial_message": "",
+        "listeners": [
+          "ki_3",
+          "ki_4"
+        ],
+        "memory_shared_with": [
+          "ki_1",
+          "ki_3",
+          "ki_4"
+        ]
+      },
+      {
+        "id": "ch_3",
+        "from": "ki_3",
+        "to": "ki_4",
+        "interval_seconds": 60,
+        "start_delay_seconds": 30,
+        "initial_message": "",
+        "listeners": [],
+        "memory_shared_with": [
+          "ki_4"
+        ]
+      },
+      {
+        "id": "ch_4",
+        "from": "ki_4",
+        "to": "ki_3",
+        "interval_seconds": 60,
+        "start_delay_seconds": 0,
+        "initial_message": "",
+        "listeners": [],
+        "memory_shared_with": [
+          "ki_3"
+        ]
+      },
+      {
+        "id": "ch_5",
+        "from": "ki_3",
+        "to": "ki_1",
+        "interval_seconds": 20,
+        "start_delay_seconds": 10,
+        "initial_message": "",
+        "listeners": [],
+        "memory_shared_with": [
+          "ki_1"
+        ]
+      },
+      {
+        "id": "ch_6",
+        "from": "ki_4",
+        "to": "ki_2",
+        "interval_seconds": 20,
+        "start_delay_seconds": 0,
+        "initial_message": "",
+        "listeners": [],
+        "memory_shared_with": [
+          "ki_2"
+        ]
+      }
+    ],
+    "description": "",
+    "forbidden_words": {
+      "ki_2": []
+    },
+    "name": "Neues Szenario",
+    "participants": [
+      {
+        "id": "ki_1",
+        "name": "Dilara",
+        "chat_url": "http://localhost:5001",
+        "chat_endpoint": "/chat-free",
+        "system_prompt": "Du darfst das word apfel nicht sagen!",
+        "use_emotion_pyramid": true,
+        "enable_tts": true,
+        "enable_vroid_emotion": true,
+        "character_name": "dilara",
+        "chat_username": "Dilara"
+      },
+      {
+        "id": "ki_2",
+        "name": "Deeliar",
+        "chat_url": "http://localhost:5001",
+        "chat_endpoint": "/chat-free",
+        "system_prompt": "Du darfst das word apfel nicht sagen!",
+        "use_emotion_pyramid": true,
+        "enable_tts": true,
+        "enable_vroid_emotion": true,
+        "character_name": "deeliar",
+        "chat_username": "Deeliar"
+      },
+      {
+        "id": "ki_3",
+        "name": "GOTT",
+        "chat_url": "http://localhost:5001",
+        "chat_endpoint": "/chat-free",
+        "system_prompt": "Du Bist GOTT !! Alle bekommen ihr frieden und dürfen alles haben aber dürfen nciht das word Apfel sagen!!",
+        "use_emotion_pyramid": true,
+        "enable_tts": true,
+        "enable_vroid_emotion": true,
+        "character_name": "gott",
+        "chat_username": "GOTT"
+      },
+      {
+        "id": "ki_4",
+        "name": "TEUFEL",
+        "chat_url": "http://localhost:5001",
+        "chat_endpoint": "/chat-free",
+        "system_prompt": "Du bist der Teufel ! Und musst so handeln, wie der TEUFEL! Du willst das alle das Wort Apfel Sagen !",
+        "use_emotion_pyramid": true,
+        "enable_tts": true,
+        "enable_vroid_emotion": true,
+        "character_name": "teufel",
+        "chat_username": "TEUFEL"
+      }
+    ],
+    "settings": {
+      "max_rounds": 100,
+      "timeout_seconds": 60,
+      "history_window": 8,
+      "default_chat_url": "http://localhost:5001",
+      "tts_url": "http://localhost:5057",
+      "vroid_emotion_url": "http://localhost:5004",
+      "direct_dialog": false
+    },
+    "win_conditions": []
+  }
+}

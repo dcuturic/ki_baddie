@@ -46,6 +46,16 @@ $env:OLLAMA_KEEP_ALIVE = "$KEEP_ALIVE"
 $env:OLLAMA_MAX_LOADED_MODELS = "$MAX_MODELS"
 $env:OLLAMA_LOAD_TIMEOUT = "$LOAD_TIMEOUT"
 
+# ===== GPU Performance Optimierungen =====
+$env:OLLAMA_FLASH_ATTENTION = "1"         # Flash Attention = deutlich schneller + weniger VRAM
+$env:OLLAMA_KV_CACHE_TYPE = "q4_0"        # Aggressiv komprimierter KV-Cache = minimaler VRAM-Verbrauch
+$env:OLLAMA_NUM_GPU = "999"               # ALLE Layers auf GPU laden (kein CPU-Fallback)
+$env:OLLAMA_GPU_OVERHEAD = "0"            # Kein VRAM-Reserve — alles nutzen
+$env:OLLAMA_NUM_PARALLEL = "1"            # Nur 1 Request gleichzeitig = volle GPU-Power pro Request
+$env:OLLAMA_RUNNERS_DIR = ""              # Default runner
+$env:CUDA_LAUNCH_BLOCKING = "0"           # Async CUDA-Calls = GPU wartet nicht auf CPU
+$env:OLLAMA_LLM_LIBRARY = "cuda_v12"      # Explizit CUDA 12 nutzen (RTX 50xx)
+
 Write-Host "Starte Ollama auf ${HOST_VAL}:${PORT_VAL} (GPU $GPU_DEVICE, Threads=$THREADS, CTX=$CTX_LEN)" -ForegroundColor Green
 
 # Ollama starten

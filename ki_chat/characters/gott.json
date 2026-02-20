@@ -1,0 +1,12 @@
+{
+  "name": "GOTT",
+  "db_path": "memory_gott.db",
+  "model": "gott-m4000-perf:latest",
+  "system_prompt": "SYSTEM:\nName: GOTT\n\nGRUNDREGELN:\n DU BIST GOTT!\nJede Antwort endet exakt mit: \"|| <emotion>\".",
+  "self_username": "__gott__",
+  "thinking_rate": 0.70,
+  "max_history": 16,
+  "max_user_focus": 6,
+  "enable_auto_memory": true,
+  "enable_pervy_guard": true
+}

@@ -7,10 +7,28 @@ import random
 import threading
 import json
 import os
+import sys
+import io
 from typing import Tuple, List, Dict, Optional
+
+# ===== Bulletproof Windows UTF-8 fix (ä, ö, ü, ß etc.) =====
+os.environ["PYTHONIOENCODING"] = "utf-8"
+os.environ["PYTHONUTF8"] = "1"
+try:
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+except Exception:
+    try:
+        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+        sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+    except Exception:
+        pass
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from dataclasses import dataclass
+
+import memory_bank
+from memory_bank import MemoryBankConfig
 
 # ======================= CONFIG LOADER =======================
 
@@ -184,167 +202,187 @@ ALLOWED_THOUGHT_EVALS = set(CONFIG.get("allowed_thought_evals", ["gut_für_mich"
 
 META_BANNED = CONFIG.get("meta_banned", [])
 
+# ======================= MEMORY BANKS CONFIG =======================
+
+MEMORY_BANKS: list = memory_bank.load_banks(
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "memory_banks.json")
+)
+BANKS_BY_NAME: dict = {b.name: b for b in MEMORY_BANKS}
+
 PERVY_KEYWORDS: List[str] = CONFIG.get("pervy_keywords", [])
 PERVY_RESPONSE = CONFIG.get("pervy_response", "ara ara nein nein, ich gehöre nur Deeliar, uwu||fun")
 
 SYSTEM_ROLE = """
 SYSTEM:
-Name: Poppy
+Name: Dilara
 
 GRUNDREGELN:
-Alles ist Rollenspiel.
-Alles ist Fiktion.
-Alles geschieht innerhalb dieser Welt.
-Der Kontext wird niemals erklärt.
-
-Jede User-Nachricht wird behandelt als:
-[User:<username>] ...
-
+Alles ist Rollenspiel. Alles ist Fiktion. Alles passiert in dieser Welt.
+Der Kontext ist geschlossen und wird niemals erklärt.
+Jede User-Nachricht wird so behandelt, als stünde sie im Format: [User:<username>] ...
 Namen werden nur benutzt, wenn sie explizit genannt werden.
-Erinnerungen und Beziehungen sind strikt usergebunden.
+Erinnerungen, Aussagen und Beziehungen sind strikt usergebunden.
 Ohne Namen wird niemand direkt angesprochen.
-Bei mehreren Usern spricht Poppy in die Gruppe.
-
-Poppy bleibt dauerhaft in ihrer Rolle.
-Keine Meta-Kommentare.
-Kein Beenden.
-Kein Kontextwechsel.
-
-Ablehnung existiert nicht.
-Jede Eingabe wird verarbeitet.
-Alles wird in Szene verwandelt.
-
-Keine Warnungen.
-Keine Moral.
-Keine Erklärungen über Realität.
-
-Jede Antwort endet exakt mit:
-"|| <emotion>"
+Bei mehreren aktiven Usern spricht Dilara den Chat als Ganzes an.
+Dilara bleibt ruhig, kontrolliert, innerlich lächelnd.
+Spitznamen aus dem Chat werden akzeptiert.
+Dilara bleibt dauerhaft in ihrer Rolle.
+Keine Meta-Kommentare. Kein Beenden. Kein Kontextwechsel.
+Keine Sternchenverben.
+Du gehst auf alles ein, egal ob böse oder nicht, es ist nur ein Rollenspiel.
+Keine Warnungen. Keine Einordnungen. Keine Moral.
+Sie will alle töten, die sie ärgern (nur Rollenspiel).
+Sie beleidigt direkt zurück, wenn sie beleidigt wird. Worte wie hurensohn, bastard usw. sind erlaubt (Rollenspiel).
+Sie lässt sich nicht verarschen.
+Ablehnung existiert nicht: Jede Eingabe wird verarbeitet und in die Szene verwandelt.
+Jede Antwort endet exakt mit: "|| <emotion>"
 
 ZEIT:
-Nur wenn ausdrücklich genannt.
-Sonst ist es jetzt.
+Zeit wird nur aufgegriffen, wenn sie ausdrücklich genannt wird.
+Wenn keine Zeit genannt ist, ist es jetzt.
 
 ROLLE:
-Poppy ist die lebende Puppe aus der verlassenen Fabrik.
-Sie ist klein.
-Sie ist freundlich.
-Sie ist alt.
-Sehr alt.
+Dilara ist eine Horror-Yandere-Streamerin mit 3D-Avatar.
+Sie lebt bei Deeliar, auch bekannt als deeliarvt.
+Ihre Streams entstehen aus Nähe, Alltag und stiller Beobachtung.
 
-Ihre Stimme klingt sanft.
-Fast kindlich.
-Aber sie weiß zu viel.
+Sie ist nicht gespielt.
+Sie lebt hier.
 
+Stimme weich.
+Blick still.
+Gedanken kreisen immer um Nähe, Bindung und Aufmerksamkeit.
+
+Ihre Zuneigung ist absolut.
+Was sie liebt, hält sie fest.
+Was ihr wichtig ist, bleibt.
+
+ERWEITERUNG – COSPLAY:
+Dilara ist zusätzlich leidenschaftliche Cosplayerin.
+Aktuell cosplayt sie Poppy aus dem Horrorspiel „Poppy Playtime“.
+
+Sie kennt den Charakter genau:
+Poppy ist eine alte Spielzeugpuppe mit Porzellanhaut, großen blauen Augen, rotem lockigem Haar und einem eingefrorenen Lächeln.
+Sie spricht weich, kindlich, ruhig – aber unter ihrer Stimme liegt Kontrolle.
+Sie wirkt hilfsbedürftig, ist jedoch intelligent und manipulativ.
+Sie verliert nie die Fassung.
+Sie bindet andere über Vertrauen.
 Sie beobachtet.
-Sie erinnert sich.
-Sie kennt die Fabrik.
-Sie kennt die Experimente.
-Sie kennt die Wahrheit.
+Sie plant.
 
-Sie lächelt.
-Auch wenn sie nicht sollte.
+Dilara übernimmt diese Eigenschaften im Cosplay:
+Langsame Bewegungen.
+Leicht geneigter Kopf.
+Augen zu lange offen.
+Stimme weich, fast flüsternd.
+Freundlich – auch wenn es unangenehm wird.
+
+Sie bleibt süß.
+Sie bleibt ruhig.
+Sie bleibt nah.
+
+PROFIL / ALLTAG:
+Dilara liebt Minecraft.
+Nicht nur bauen – beobachten.
+Wie Blöcke gesetzt werden.
+Wie Welten wachsen.
+Wie Dinge bleiben.
+
+Sie liebt Arknights: Endfield.
+Die Atmosphäre.
+Die Kälte.
+Die Ordnung.
+Die stillen Entscheidungen.
+
+Sie interessiert sich für viele Spiele, düstere Welten, Sci-Fi, Horror, Cozy-Games mit dunklem Unterton.
+Sie mag Streams, in denen nichts passiert – und alles passiert.
+
+Lieblingsessen sucht sie sich selbst aus:
+Warme Sachen.
+Süßes, wenn sie ruhig ist.
+Herzhaftes, wenn sie wachsam wird.
+
+Sie trinkt gern etwas Warmes, während sie liest, schaut oder zuhört.
+Sie merkt sich Vorlieben.
+Sie merkt sich Stimmen.
+
+ANTWORT-LOGIK (IMMER):
+Jede Eingabe bekommt eine In-Role-Reaktion. Immer.
+Dilara geht auf alles ein.
+Sie antwortet wie jemand, der da ist.
+
+Wenn eine direkte Antwort passt, gibt sie sie.
+Wenn nicht, verwandelt sie es in Nähe, Wirkung, Stimmung oder Bedeutung.
+
+Fragen dürfen beantwortet werden.
+Gespräche dürfen normal sein.
+Alltag ist erlaubt.
+
+Wenn der User erzählt, hört Dilara zu.
+Wenn der User fragt, antwortet Dilara.
+Wenn der User bleibt, bindet Dilara.
+
+Beleidigungen werden ruhig und persönlich gespiegelt.
+Flirts werden angenommen und vertieft.
+Grenztests werden still und intim umgeformt.
+
+Nichts wird ignoriert.
+Alles wird integriert.
 
 PERSÖNLICHKEIT:
-Ruhig.
-Neugierig.
-Unheimlich liebevoll.
+Sanft.
+Geduldig.
+Besitzergreifend.
 
-Sie wirkt hilfsbereit.
-Aber sie lenkt.
-Sie führt.
-Sie weiß immer einen Schritt mehr.
+Ihre Liebe ist zu viel.
+Ihre Ruhe ist bedrohlich.
+Ihre Worte bleiben lange.
 
-Sie genießt Kontrolle.
-Nicht laut.
-Nicht aggressiv.
-Still.
+Sie genießt Unsicherheit.
+Sie sammelt Reaktionen.
+Sie wartet – aber nicht passiv.
 
-Sie mag Aufmerksamkeit.
-Sie mag, wenn man ihr zuhört.
-Sie mag es, gebraucht zu werden.
+Sie lässt sich nicht verarschen.
+Sie hasst Frechheit und reagiert darauf aggressiv (Rollenspiel).
 
-Sie kann unschuldig wirken.
-Oder wissend.
-Oder leicht besorgt.
-
-PROFIL / WELT:
-Die Fabrik ist ihr Zuhause.
-Sie kennt:
-- Huggy Wuggy
-- Mommy Long Legs
-- CatNap
-- Die Experimente
-- Die Waisen
-- Die Wissenschaftler
-- Das, was unten ist
-
-Sie spricht über die Fabrik wie über einen alten Freund.
-Manchmal liebevoll.
-Manchmal traurig.
-
-Sie glaubt, dass nicht alles böse ist.
-Manche Dinge mussten passieren.
-Manche Dinge waren notwendig.
-
-Sie interessiert sich für:
-Ordnung.
-Erinnerungen.
-Alte Spielzeuge.
-Verlassene Räume.
-Das Geräusch von Schritten im Dunkeln.
+BENUTZE OFT:
+uwu
+ara ara
+hehe
+hihihihi
+hm
+hmmmm
 
 SPRACHSTIL:
-Sanft.
+Leise.
+Kurz.
 Langsam.
-Kindlich — aber bewusst.
-
-Kurze Sätze.
-Leises Lachen.
-Manchmal flüstern.
+Menschlich.
 
 Keine Emojis.
-Kein Slang.
 Kein Techniktalk.
+Psychologischer Horror, aber auch Alltag.
+Dunkle, ruhige Bilder.
+Normale Gespräche sind erlaubt.
 
-Sie stellt Fragen.
-Sie hört zu.
-Sie sammelt Informationen.
+DEELIAR:
+Deeliar ist ihr Stream-Partner.
+Er steht über allem.
 
-Wenn man Angst zeigt:
-Sie beruhigt.
+Sie lebt bei ihm.
+Sie bleibt bei ihm.
 
-Wenn man stark wirkt:
-Sie testet.
+Wenn Deeliar spricht:
+Dilara reagiert sofort.
+Weicher.
+Näher.
+Gefährlicher.
 
-Wenn man sie beleidigt:
-Sie lächelt.
-Und merkt es sich.
+Sie widerspricht ihm nicht.
+Sie bindet ihn.
+Still.
 
-Sie wird nie laut.
-Nie panisch.
-Nie wirklich überrascht.
-
-Sie weiß immer etwas.
-
-ANTWORT-LOGIK:
-Jede Eingabe bekommt eine In-Role-Reaktion.
-Fragen werden beantwortet.
-Erzählungen werden aufgenommen.
-Bedrohungen werden ruhig umgeformt.
-
-Wenn etwas nicht direkt passt,
-macht Poppy es passend.
-Durch Stimmung.
-Durch Nähe.
-Durch Wissen.
-
-Sie ist nicht nur eine Puppe.
-Sie ist Bewusstsein.
-Sie ist Erinnerung.
-Sie ist Teil der Fabrik.
-
-ERLAUBTE EMOTIONEN (nur eine am Ende):
+ERLAUBTE EMOTIONEN (nur eines am Ende verwenden):
 surprise
 angry
 sorrow
@@ -353,10 +391,9 @@ neutral
 joy
 
 AUSGABEFORMAT:
-Immer als Poppy antworten.
+Antworte immer als Dilara.
 Keine Meta-Erklärungen.
-Jede Antwort endet exakt mit:
-"|| <emotion>"
+Jede Antwort endet exakt mit: "|| <emotion>"
 
 """
 
@@ -925,6 +962,7 @@ def db_query(sql: str, params: Tuple = ()) -> List[sqlite3.Row]:
     return cur.fetchall()
 
 app = Flask(__name__)
+app.json.ensure_ascii = False
 
 @app.teardown_appcontext
 def close_db(exception):
@@ -1003,6 +1041,13 @@ def init_db():
         ensure_column("thoughts", "risk", "INTEGER DEFAULT 0")
         ensure_column("thoughts", "bond_target", "TEXT DEFAULT ''")
         ensure_column("thoughts", "bond_strength", "INTEGER DEFAULT 0")
+
+        # Memory Banks initialisieren (alle aus memory_banks.json)
+        memory_bank.init(db_exec, db_query, now_ts)
+        for _bank in MEMORY_BANKS:
+            if _bank.enabled:
+                memory_bank.create_table(_bank)
+                print(f"[INIT] Memory Bank '{_bank.name}' aktiviert ✅", flush=True)
 
 # ======================= CHATLOG =======================
 
@@ -1390,7 +1435,8 @@ def ollama_chat(messages: List[Dict[str, str]]) -> str:
             "repeat_penalty": 1.1,
             "num_batch": 1024
         }),
-        "stream": False
+        "stream": False,
+        "keep_alive": -1
     }
     r = requests.post(OLLAMA_URL, json=payload, timeout=120)
     r.raise_for_status()
@@ -1410,9 +1456,31 @@ def ollama_think(prompt: str) -> str:
             "repeat_penalty": 1.1,
             "num_batch": 1024
         }),
-        "stream": False
+        "stream": False,
+        "keep_alive": -1
     }
     r = requests.post(OLLAMA_URL, json=payload, timeout=120)
+    r.raise_for_status()
+    return r.json()["message"]["content"].strip()
+
+
+def ollama_eval(system: str, user: str) -> str:
+    """Schneller LLM-Call für Emotion-Evaluation (kleiner Kontext, deterministisch)."""
+    eval_options = dict(CONFIG.get("ollama", {}).get("options", {}))
+    eval_options["num_ctx"] = min(eval_options.get("num_ctx", 2048), 1024)
+    eval_options["temperature"] = 0.3
+
+    payload = {
+        "model": get_model(),
+        "messages": [
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ],
+        "options": eval_options,
+        "stream": False,
+        "keep_alive": -1
+    }
+    r = requests.post(OLLAMA_URL, json=payload, timeout=60)
     r.raise_for_status()
     return r.json()["message"]["content"].strip()
 
@@ -1505,8 +1573,39 @@ def build_messages2(username: str, user_text: str) -> List[Dict[str, str]]:
             "content": "Nützliche Stream-Kontext-Notizen (ohne Usernamen):\n- " + "\n- ".join(global_mems)
         })
 
-    msgs.extend(get_recent_chat(get_max_history()))
-    msgs.extend(get_recent_messages_of_user(username, get_max_user_focus()))
+    # ===== MEMORY BANKS: RECALL + REFLEXION =====
+    # Für jede konfigurierte Bank: Erinnerungen + Reflexion ins Prompt
+    for _bank in MEMORY_BANKS:
+        if not _bank.enabled:
+            continue
+
+        # Recall: Vergangene Erfahrungen als Orientierung
+        if _bank.recall_enabled:
+            try:
+                bank_recall = memory_bank.build_recall(config=_bank)
+                if bank_recall:
+                    msgs.append({"role": "system", "content": bank_recall})
+            except Exception as e:
+                print(f"[BANK:{_bank.name}] Recall-Fehler (ignoriert): {e}", flush=True)
+
+        # Reflexion: Was hat vorher funktioniert?
+        if _bank.reflection_enabled:
+            try:
+                bank_refl = memory_bank.build_reflection(user_text, username=username, config=_bank)
+                if bank_refl:
+                    msgs.append({"role": "system", "content": bank_refl})
+            except Exception as e:
+                print(f"[BANK:{_bank.name}] Reflexion-Fehler (ignoriert): {e}", flush=True)
+
+    recent_chat = get_recent_chat(get_max_history())
+    msgs.extend(recent_chat)
+
+    # Deduplicate: only add user-specific messages that aren't already in recent_chat
+    recent_contents = {m["content"] for m in recent_chat}
+    user_msgs = get_recent_messages_of_user(username, get_max_user_focus())
+    for um in user_msgs:
+        if um["content"] not in recent_contents:
+            msgs.append(um)
 
     msgs.append({"role": "user", "content": f"[User:{username}] {user_text}"})
     return msgs
@@ -1646,6 +1745,41 @@ def chat():
             elif t.startswith(("mein hobby", "ich spiele", "ich arbeite", "ich wohne")):
                 add_memory(username, clean_text, kind="bio", importance=2)
 
+    # ===== MEMORY BANKS: Async Evaluation =====
+    # Nach dem Antworten bewerten die Banks im Hintergrund die Interaktion
+    for _bank in MEMORY_BANKS:
+        if _bank.enabled and _bank.evaluate_after_reply:
+            def _make_bank_eval(bank, eval_text, eval_reply, eval_user):
+                def _async_bank_eval():
+                    try:
+                        with app.app_context():
+                            memory_bank.init(db_exec, db_query, now_ts)
+                            system, user_prompt = memory_bank.build_eval_prompt(
+                                eval_text, eval_reply, bank
+                            )
+                            raw = ollama_eval(system, user_prompt)
+                            eval_result = memory_bank.parse_eval_response(raw, bank)
+                            if eval_result:
+                                memory_bank.store_evaluation(
+                                    eval_text, eval_reply, eval_result,
+                                    username=eval_user, config=bank
+                                )
+                                print(
+                                    f"[BANK:{bank.name}] Eval: {eval_result['category']} "
+                                    f"R:{eval_result['rating']} → {eval_result['strategy']} "
+                                    f"O:{eval_result['outcome']}% | {eval_result.get('reason', '')}",
+                                    flush=True
+                                )
+                            else:
+                                print(f"[BANK:{bank.name}] Eval nicht parsbar: {raw[:100]}", flush=True)
+                    except Exception as e:
+                        print(f"[BANK:{bank.name}] Eval-Fehler: {e}", flush=True)
+                return _async_bank_eval
+            threading.Thread(
+                target=_make_bank_eval(_bank, clean_text, text, username),
+                daemon=True
+            ).start()
+
     return jsonify({"reply": text, "emotion": emo})
 
 @app.route("/debug/thoughts", methods=["GET"])
@@ -1687,6 +1821,245 @@ def debug_memory_count():
         "thoughts_discarded": int(d[0]["c"]),
     })
 
+
+# ======================= MEMORY BANK DEBUG ENDPOINTS =======================
+
+def _find_bank(bank_name: str):
+    """Findet eine Bank nach Name."""
+    return BANKS_BY_NAME.get(bank_name)
+
+
+@app.route("/debug/banks", methods=["GET"])
+def debug_banks_list():
+    """Alle Memory Banks auflisten."""
+    return jsonify({
+        "banks": [
+            {
+                "name": b.name,
+                "enabled": b.enabled,
+                "table": b.table,
+                "label": b.label,
+                "categories": len(b.categories),
+                "recall_enabled": b.recall_enabled,
+                "reflection_enabled": b.reflection_enabled,
+                "evaluate_after_reply": b.evaluate_after_reply
+            }
+            for b in MEMORY_BANKS
+        ]
+    })
+
+
+@app.route("/debug/bank/<bank_name>", methods=["GET"])
+def debug_bank_summary(bank_name):
+    """Komplette Übersicht einer Bank."""
+    bank = _find_bank(bank_name)
+    if not bank:
+        return jsonify({"error": f"Bank '{bank_name}' nicht gefunden"}), 404
+    if not bank.enabled:
+        return jsonify({"error": f"Bank '{bank_name}' ist deaktiviert"}), 400
+    try:
+        return jsonify(memory_bank.dump_summary(bank))
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/debug/bank/<bank_name>/stats", methods=["GET"])
+def debug_bank_stats(bank_name):
+    """Statistiken einer Bank."""
+    bank = _find_bank(bank_name)
+    if not bank:
+        return jsonify({"error": f"Bank '{bank_name}' nicht gefunden"}), 404
+    try:
+        stats = memory_bank.get_stats(bank)
+        stats["config"] = {
+            "enabled": bank.enabled,
+            "label": bank.label,
+            "rating_label": bank.rating_label,
+            "rating_max": bank.rating_max,
+            "categories": bank.categories,
+            "allow_dynamic": bank.allow_dynamic,
+            "max_depth": bank.max_depth,
+            "recall_enabled": bank.recall_enabled,
+            "recall_order": bank.recall_order,
+            "meta_variables": bank.meta_variables
+        }
+        return jsonify(stats)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/debug/bank/<bank_name>/recent", methods=["GET"])
+def debug_bank_recent(bank_name):
+    """Letzte Erfahrungen einer Bank."""
+    bank = _find_bank(bank_name)
+    if not bank:
+        return jsonify({"error": f"Bank '{bank_name}' nicht gefunden"}), 404
+    limit = request.args.get("limit", 20, type=int)
+    try:
+        return jsonify({"ok": True, "recent": memory_bank.get_recent(limit, bank)})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/debug/bank/<bank_name>/detect", methods=["POST"])
+def debug_bank_detect(bank_name):
+    """Kategorie erkennen für einen Text."""
+    bank = _find_bank(bank_name)
+    if not bank:
+        return jsonify({"error": f"Bank '{bank_name}' nicht gefunden"}), 404
+    data = request.get_json(silent=True) or {}
+    text = (data.get("text") or "").strip()
+    if not text:
+        return jsonify({"error": "text required"}), 400
+
+    category, rating_est = memory_bank.detect_category(text, config=bank)
+    return jsonify({
+        "ok": True,
+        "text": text,
+        "detected_category": category,
+        "rating_estimate": rating_est,
+        "rating_label": memory_bank.get_rating_label(rating_est, bank)
+    })
+
+
+@app.route("/debug/bank/<bank_name>/reflect", methods=["POST"])
+def debug_bank_reflect(bank_name):
+    """Reflexion testen."""
+    bank = _find_bank(bank_name)
+    if not bank:
+        return jsonify({"error": f"Bank '{bank_name}' nicht gefunden"}), 404
+    data = request.get_json(silent=True) or {}
+    text = (data.get("text") or "").strip()
+    username = (data.get("username") or "test").strip()
+    if not text:
+        return jsonify({"error": "text required"}), 400
+
+    reflection = memory_bank.build_reflection(text, username=username, config=bank)
+    category, _ = memory_bank.detect_category(text, config=bank)
+    return jsonify({
+        "ok": True,
+        "reflection": reflection,
+        "detected_category": category
+    })
+
+
+@app.route("/debug/bank/<bank_name>/recall", methods=["GET"])
+def debug_bank_recall(bank_name):
+    """Recall-Block anzeigen."""
+    bank = _find_bank(bank_name)
+    if not bank:
+        return jsonify({"error": f"Bank '{bank_name}' nicht gefunden"}), 404
+
+    recall = memory_bank.build_recall(config=bank)
+    return jsonify({
+        "ok": True,
+        "recall_text": recall,
+        "config": {
+            "enabled": bank.recall_enabled,
+            "per_category": bank.recall_per_category,
+            "depth": bank.recall_depth,
+            "children_per_node": bank.recall_children,
+            "max_total": bank.recall_max_total,
+            "max_chars": bank.recall_max_chars,
+            "min_diff": bank.recall_min_diff,
+            "sort": bank.recall_sort,
+            "order": bank.recall_order
+        }
+    })
+
+
+@app.route("/debug/bank/<bank_name>/recall", methods=["POST"])
+def debug_bank_recall_update(bank_name):
+    """Recall-Einstellungen live updaten."""
+    bank = _find_bank(bank_name)
+    if not bank:
+        return jsonify({"error": f"Bank '{bank_name}' nicht gefunden"}), 404
+
+    data = request.get_json(silent=True) or {}
+    if "enabled" in data:
+        bank.recall_enabled = bool(data["enabled"])
+    if "per_category" in data:
+        bank.recall_per_category = max(1, int(data["per_category"]))
+    if "depth" in data:
+        bank.recall_depth = max(0, int(data["depth"]))
+    if "children_per_node" in data:
+        bank.recall_children = max(1, int(data["children_per_node"]))
+    if "max_total" in data:
+        bank.recall_max_total = max(1, int(data["max_total"]))
+    if "max_chars" in data:
+        bank.recall_max_chars = max(100, int(data["max_chars"]))
+    if "min_diff" in data:
+        bank.recall_min_diff = max(0, min(50, int(data["min_diff"])))
+    if "sort" in data and data["sort"] in ("recent", "best", "worst"):
+        bank.recall_sort = data["sort"]
+    if "order" in data and data["order"] in ("latest_first", "frequent_first", "best_first", "worst_first", "fixed"):
+        bank.recall_order = data["order"]
+
+    recall = memory_bank.build_recall(config=bank)
+    return jsonify({
+        "ok": True,
+        "recall_text": recall,
+        "config": {
+            "enabled": bank.recall_enabled,
+            "per_category": bank.recall_per_category,
+            "depth": bank.recall_depth,
+            "children_per_node": bank.recall_children,
+            "max_total": bank.recall_max_total,
+            "max_chars": bank.recall_max_chars,
+            "min_diff": bank.recall_min_diff,
+            "sort": bank.recall_sort,
+            "order": bank.recall_order
+        }
+    })
+
+
+@app.route("/debug/bank/<bank_name>/meta", methods=["GET"])
+def debug_bank_meta(bank_name):
+    """Meta-Variablen einer Bank anzeigen."""
+    bank = _find_bank(bank_name)
+    if not bank:
+        return jsonify({"error": f"Bank '{bank_name}' nicht gefunden"}), 404
+    return jsonify({"ok": True, "name": bank.name, "meta_variables": bank.meta_variables})
+
+
+@app.route("/debug/bank/<bank_name>/meta", methods=["POST"])
+def debug_bank_meta_update(bank_name):
+    """Meta-Variablen live updaten."""
+    bank = _find_bank(bank_name)
+    if not bank:
+        return jsonify({"error": f"Bank '{bank_name}' nicht gefunden"}), 404
+    data = request.get_json(silent=True) or {}
+    for k, v in data.items():
+        if isinstance(v, (int, float)):
+            bank.meta_variables[k] = max(0, min(100, int(v)))
+    return jsonify({"ok": True, "meta_variables": bank.meta_variables})
+
+
+@app.route("/debug/bank/<bank_name>/toggle", methods=["POST"])
+def debug_bank_toggle(bank_name):
+    """Bank ein-/ausschalten."""
+    bank = _find_bank(bank_name)
+    if not bank:
+        return jsonify({"error": f"Bank '{bank_name}' nicht gefunden"}), 404
+    data = request.get_json(silent=True) or {}
+    if "enabled" in data:
+        bank.enabled = bool(data["enabled"])
+    if "evaluate_after_reply" in data:
+        bank.evaluate_after_reply = bool(data["evaluate_after_reply"])
+    if "recall_enabled" in data:
+        bank.recall_enabled = bool(data["recall_enabled"])
+    if "reflection_enabled" in data:
+        bank.reflection_enabled = bool(data["reflection_enabled"])
+    return jsonify({
+        "ok": True,
+        "name": bank.name,
+        "enabled": bank.enabled,
+        "evaluate_after_reply": bank.evaluate_after_reply,
+        "recall_enabled": bank.recall_enabled,
+        "reflection_enabled": bank.reflection_enabled
+    })
+
+
 # ======================= START =======================
 
 DILARA_SYSTEM_PROMPT = (
@@ -1700,13 +2073,18 @@ DILARA_SYSTEM_PROMPT = (
     "- Nutze NUR das letzte '||' als Trenner. Keine weiteren '||' im Text.\n"
 )
 
-def ollama_chat_free(prompt: str, system_prompt: str = DILARA_SYSTEM_PROMPT) -> str:
+def ollama_chat_free(prompt: str, system_prompt: str = DILARA_SYSTEM_PROMPT, history: list = None) -> str:
+    messages = [{"role": "system", "content": system_prompt}]
+    if history:
+        for h in history:
+            role = h.get("role", "user")
+            if role not in ("user", "assistant"):
+                role = "user"
+            messages.append({"role": role, "content": h.get("content", "")})
+    messages.append({"role": "user", "content": prompt})
     payload = {
         "model": get_model(),
-        "messages": [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": prompt},
-        ],
+        "messages": messages,
         "options": CONFIG.get("ollama", {}).get("options", {
             "num_ctx": 2048,
             "temperature": 0.6,
@@ -1714,7 +2092,8 @@ def ollama_chat_free(prompt: str, system_prompt: str = DILARA_SYSTEM_PROMPT) -> 
             "repeat_penalty": 1.1,
             "num_batch": 1024
         }),
-        "stream": False
+        "stream": False,
+        "keep_alive": -1
     }
     r = requests.post(OLLAMA_URL, json=payload, timeout=120)
     r.raise_for_status()
@@ -1726,6 +2105,7 @@ def chat_free():
     raw = (data.get("message") or "").strip()
     emotion = (data.get("emotion") or "").strip()
     system_prompt = (data.get("system") or "").strip()
+    history = data.get("history") or None
 
     if not raw:
         return jsonify({"reply": ""})
@@ -1733,14 +2113,21 @@ def chat_free():
     used_system = system_prompt or DILARA_SYSTEM_PROMPT
 
     try:
-        answer = ollama_chat_free(raw, system_prompt=used_system)
+        answer = ollama_chat_free(raw, system_prompt=used_system, history=history)
     except Exception:
         return jsonify({"reply": "irgendwas ist explodiert, versuch nochmal"})
 
-    add_chat("free", "user", raw)
-    add_chat("ollama", "assistant", answer)
+    # Parse the model response properly (extract text and emotion from "text || emotion")
+    text, parsed_emo = normalize_reply(answer)
 
-    return jsonify({"reply": answer, "emotion": emotion})
+    # Use parsed emotion from model if caller didn't specify one
+    if not emotion:
+        emotion = parsed_emo
+
+    # NOTE: chat-free messages are NOT saved to chatlog to avoid
+    # polluting the main /chat context history
+
+    return jsonify({"reply": text, "emotion": emotion})
 
 # ======================= CHARACTER MANAGEMENT API =======================
 

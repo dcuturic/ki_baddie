@@ -4,6 +4,31 @@
 var audioDevices = { inputs: [], outputs: [] };
 var audioModePerService = {};
 var virtualAssignments = {};  // { instanceName: assignment }
+var ollamaModels = [];  // cached list of installed Ollama models
+var ollamaModelsLoaded = false;
+
+async function loadOllamaModels() {
+    if (ollamaModelsLoaded) return;
+    try {
+        const result = await apiCall('/api/ollama/models');
+        if (result && result.success) {
+            ollamaModels = result.models || [];
+        } else {
+            console.warn('Ollama models not available:', result ? result.error : 'unknown');
+            ollamaModels = [];
+        }
+    } catch (e) {
+        console.warn('Could not load Ollama models:', e);
+        ollamaModels = [];
+    }
+    ollamaModelsLoaded = true;
+}
+
+async function refreshOllamaModels(serviceId, path, onChangeFn) {
+    ollamaModelsLoaded = false;
+    await loadOllamaModels();
+    if (typeof renderICSimple === 'function') renderICSimple();
+}
 
 function getAudioMode(serviceId) {
     return audioModePerService[serviceId] || 'all';
@@ -79,7 +104,7 @@ var SIMPLE_FIELDS = {
         { path: 'server.host', label: 'Host', type: 'text' },
         { path: 'server.debug', label: 'Debug', type: 'bool' },
         { path: 'ollama.url', label: 'Ollama URL', type: 'url', hint: 'Ollama API Endpoint' },
-        { path: 'ollama.default_model', label: 'LLM Model', type: 'text', hint: 'z.B. llama3:latest' },
+        { path: 'ollama.default_model', label: 'LLM Model', type: 'ollama_model', hint: 'Installiertes Ollama-Modell auswählen' },
         { path: 'default_character', label: 'Default Character', type: 'text', hint: 'z.B. dilara, alex, luna' },
     ],
     text_to_speech: [
@@ -344,6 +369,37 @@ function buildSimpleFieldsHtml(serviceId, cfg, options) {
                         ${checkboxesHtml}
                     </div>
                 </div>`;
+        } else if (field.type === 'ollama_model') {
+            // Dropdown populated from Ollama API /api/tags
+            const currentVal = val ?? '';
+            let optionsHtml = `<option value="">(nicht gesetzt)</option>`;
+            let matched = false;
+            if (ollamaModels.length > 0) {
+                ollamaModels.forEach(m => {
+                    const isSelected = currentVal === m.name;
+                    if (isSelected) matched = true;
+                    const sizeTag = m.size_gb ? ` (${m.size_gb} GB` + (m.parameter_size ? `, ${m.parameter_size}` : '') + (m.quantization ? `, ${m.quantization}` : '') + ')' : '';
+                    optionsHtml += `<option value="${m.name}" ${isSelected ? 'selected' : ''}>${m.name}${sizeTag}</option>`;
+                });
+            }
+            if (currentVal && !matched) {
+                optionsHtml += `<option value="${currentVal}" selected>⚠️ ${currentVal} (nicht in Ollama gefunden)</option>`;
+            }
+            const refreshBtnId = `${fieldId}-refresh`;
+            fieldsHtml += `
+                <div style="display:flex;align-items:center;gap:0.7rem;padding:0.35rem 0;flex-wrap:wrap;">
+                    <label for="${fieldId}" style="min-width:120px;margin:0;">${field.label}</label>
+                    <select id="${fieldId}" class="form-input" style="flex:1;min-width:200px;"
+                            onchange="${onChangeFn}('${serviceId}','${field.path}',this.value,'text')">
+                        ${optionsHtml}
+                    </select>
+                    <button type="button" id="${refreshBtnId}" class="btn btn-secondary" style="padding:0.25rem 0.6rem;font-size:0.85em;"
+                            onclick="refreshOllamaModels('${serviceId}','${field.path}','${onChangeFn}')"
+                            title="Modell-Liste neu laden">🔄</button>
+                    ${hintHtml}
+                </div>`;
+            // Trigger lazy load if not yet loaded
+            if (!ollamaModelsLoaded) { loadOllamaModels().then(() => { if (typeof renderICSimple === 'function') renderICSimple(); }); }
         } else {
             fieldsHtml += `
                 <div style="display:flex;align-items:center;gap:0.7rem;padding:0.35rem 0;flex-wrap:wrap;">

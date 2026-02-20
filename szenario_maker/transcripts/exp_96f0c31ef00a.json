@@ -1,0 +1,64 @@
+{
+  "experiment_id": "exp_96f0c31ef00a",
+  "scenario_name": "neues_szenario",
+  "started_at": "2026-02-19T19:09:03.206648",
+  "finished_at": "2026-02-19T19:17:25.339759",
+  "status": "stopped",
+  "total_rounds": 0,
+  "win_result": null,
+  "messages": [],
+  "scenario": {
+    "name": "Neues Szenario",
+    "description": "",
+    "participants": [
+      {
+        "id": "ki_1",
+        "name": "KI 1",
+        "chat_url": "http://localhost:5000",
+        "chat_endpoint": "/chat-free",
+        "system_prompt": "du bist deeliar, sei wie du seinwilst, information en du bist ein mann.",
+        "use_emotion_pyramid": true,
+        "enable_tts": true,
+        "enable_vroid_emotion": true,
+        "character_name": "",
+        "chat_username": ""
+      },
+      {
+        "id": "ki_2",
+        "name": "KI 2",
+        "chat_url": "http://localhost:5000",
+        "chat_endpoint": "/chat-free",
+        "system_prompt": "du bist dilara, sei wie du seinwilst, information en du bist eine Frau.",
+        "use_emotion_pyramid": true,
+        "enable_tts": true,
+        "enable_vroid_emotion": true,
+        "character_name": "",
+        "chat_username": ""
+      }
+    ],
+    "channels": [
+      {
+        "id": "ch_1",
+        "from": "ki_1",
+        "to": "ki_2",
+        "interval_seconds": 10,
+        "start_delay_seconds": 0,
+        "initial_message": "",
+        "listeners": [],
+        "memory_shared_with": [
+          "ki_2"
+        ]
+      }
+    ],
+    "forbidden_words": {},
+    "win_conditions": [],
+    "settings": {
+      "max_rounds": 100,
+      "timeout_seconds": 60,
+      "history_window": 8,
+      "default_chat_url": "http://localhost:5001",
+      "tts_url": "http://localhost:5057",
+      "vroid_emotion_url": "http://localhost:5004"
+    }
+  }
+}

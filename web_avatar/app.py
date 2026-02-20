@@ -18,10 +18,25 @@ Nutzung:
 """
 
 import os
+import sys
+import io
 import json
 import time
 import threading
 from typing import Dict, Any
+
+# ===== Bulletproof Windows UTF-8 fix (ä, ö, ü, ß etc.) =====
+os.environ["PYTHONIOENCODING"] = "utf-8"
+os.environ["PYTHONUTF8"] = "1"
+try:
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+except Exception:
+    try:
+        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+        sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+    except Exception:
+        pass
 
 from flask import Flask, request, jsonify, send_file, Response
 from flask_socketio import SocketIO, emit
@@ -58,7 +73,7 @@ OSC_FORWARD_HOST = osc_cfg.get("forward_host", "127.0.0.1")
 OSC_FORWARD_PORT = osc_cfg.get("forward_port", 39540)
 
 vrm_cfg = CONFIG.get("vrm", {})
-VRM_MODEL_PATH = "models/poppy.vrm"
+VRM_MODEL_PATH = "models/dilara3.vrm"
 MODEL_FORMAT = "glb" if VRM_MODEL_PATH.lower().endswith(".glb") else "vrm"
 
 cam_cfg = CONFIG.get("camera", {})
@@ -70,6 +85,7 @@ CAM_FOV = cam_cfg.get("fov", 28)
 
 app = Flask(__name__, static_folder="static", static_url_path="/static")
 app.config["SECRET_KEY"] = "web-avatar-secret"
+app.json.ensure_ascii = False
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading")
 
 # ======================= STATE BUFFERS =======================

@@ -1,0 +1,275 @@
+[
+  {
+    "name": "emotion",
+    "enabled": true,
+    "table": "bank_emotion",
+    "evaluate_after_reply": true,
+    "label": "Emotion",
+    "rating_label": "Intensität",
+    "rating_max": 10,
+
+    "categories": [
+      "freude", "wut", "trauer", "angst",
+      "ekel", "überraschung", "liebe", "neugier",
+      "stolz", "scham", "neid", "verachtung"
+    ],
+
+    "keywords": {
+      "freude": [
+        "freude", "glücklich", "happy", "toll", "super", "geil", "nice",
+        "yay", "cool", "mega", "krass", "perfekt", "bester", "genial",
+        "hammer", "bombastisch", "wunderbar", "fantastisch"
+      ],
+      "wut": [
+        "wut", "sauer", "wütend", "hass", "anger", "scheiße", "kacke",
+        "nervig", "penn", "idiot", "arsch", "dumm", "blöd", "hurensohn",
+        "bastard", "nervst", "nerv", "ärger", "frechheit", "penner",
+        "vollidiot", "spast", "missgeburt", "depp"
+      ],
+      "trauer": [
+        "trauer", "traurig", "sad", "weinen", "einsam", "allein",
+        "verlust", "schmerz", "tot", "tod", "sterben", "depression", "depri"
+      ],
+      "angst": [
+        "angst", "ängstlich", "sorge", "panik", "furcht",
+        "gruselig", "grusel", "horror", "creepy", "unheimlich"
+      ],
+      "ekel": [
+        "ekel", "ekelhaft", "igitt", "bäh", "widerlich", "pfui",
+        "grausig", "abstoßend"
+      ],
+      "überraschung": [
+        "überraschung", "überrascht", "wow", "oha", "omg", "wtf",
+        "alter", "whoa", "nicht erwartet", "unerwartet"
+      ],
+      "liebe": [
+        "liebe", "lieb", "süß", "cute", "herz", "kussi", "kuss",
+        "knuddel", "umarmung", "zuneigung", "vermissen"
+      ],
+      "neugier": [
+        "neugier", "neugierig", "frage", "warum", "wieso", "weshalb",
+        "wie geht", "was ist", "erzähl", "zeig", "erklär"
+      ],
+      "stolz": [
+        "stolz", "geschafft", "gewonnen", "stark", "champion", "pro",
+        "crack", "god", "legende", "ehre"
+      ],
+      "scham": [
+        "scham", "schämen", "peinlich", "awkward", "cringe", "ohje",
+        "oh nein", "sorry"
+      ],
+      "neid": [
+        "neid", "neidisch", "eifersüchtig", "unfair", "warum du",
+        "will auch", "jealous"
+      ],
+      "verachtung": [
+        "verachtung", "verachten", "erbärmlich", "lächerlich", "pathetic",
+        "jämmerlich", "unwürdig"
+      ]
+    },
+
+    "allow_dynamic": true,
+    "max_categories": 50,
+    "max_depth": 3,
+    "max_items": 200,
+
+    "reflection": {
+      "enabled": true,
+      "header": "EMOTIONS-REFLEXION (innerlich, NICHT aussprechen):",
+      "detected_label": "Erkannte Emotion",
+      "best_label": "Was bei dieser Emotion vorher funktioniert hat:",
+      "worst_label": "Warnung — das lief bei dieser Emotion schlecht:",
+      "recommend_label": "→ Empfohlene Strategie:",
+      "max_items": 3,
+      "max_chars": 250
+    },
+
+    "recall": {
+      "enabled": true,
+      "header": "EMOTIONS-ERINNERUNGEN",
+      "hauptstrang": "★ HAUPTEMOTION",
+      "per_category": 1,
+      "depth": 1,
+      "children_per_node": 1,
+      "max_total": 6,
+      "max_chars": 300,
+      "min_diff": 2,
+      "sort": "recent",
+      "order": "latest_first"
+    },
+
+    "rating_labels": {
+      "0": "nicht spürbar",
+      "1": "kaum merklich",
+      "2": "schwach",
+      "3": "leicht",
+      "4": "unter mittel",
+      "5": "mittel",
+      "6": "merklich",
+      "7": "deutlich",
+      "8": "stark",
+      "9": "sehr stark",
+      "10": "extrem"
+    },
+
+    "meta_variables": {
+      "stärke": 70,
+      "intelligenz": 80,
+      "empathie": 60,
+      "dominanz": 75,
+      "geduld": 50,
+      "humor": 65,
+      "bindung": 85,
+      "misstrauen": 40
+    }
+  },
+
+  {
+    "name": "topic",
+    "enabled": true,
+    "table": "bank_topic",
+    "evaluate_after_reply": false,
+    "label": "Thema",
+    "rating_label": "Qualität",
+    "rating_max": 10,
+
+    "categories": [
+      "smalltalk", "gaming", "persönlich", "humor", "musik",
+      "essen", "technik", "kreativ", "stream", "beziehung",
+      "beleidigung", "flirt", "alltag", "philosophie", "horror",
+      "anime", "cosplay", "gefühle", "rat", "wissen"
+    ],
+
+    "keywords": {
+      "smalltalk": [
+        "wie geht", "was machst", "alles klar", "na", "hey", "hi", "hallo",
+        "morgen", "abend", "tag", "nacht", "müde", "wach", "langeweile",
+        "was los", "erzähl", "chillen", "relaxen"
+      ],
+      "gaming": [
+        "minecraft", "game", "spiel", "spielen", "zocken", "arknights",
+        "endfield", "steam", "controller", "level", "boss",
+        "map", "bauen", "crafting", "pvp", "multiplayer", "singleplayer",
+        "rpg", "mmo", "fps", "indie"
+      ],
+      "persönlich": [
+        "fühle mich", "traurig", "einsam", "glücklich", "problem",
+        "sorge", "angst", "stress", "überfordert", "hilfe",
+        "familie", "freund", "beziehung", "liebe", "vertrauen"
+      ],
+      "humor": [
+        "witz", "lustig", "lol", "haha", "lmao", "rofl", "joke",
+        "meme", "funny", "comedy", "spaß", "lachen"
+      ],
+      "musik": [
+        "musik", "song", "lied", "singen", "hören", "band", "album",
+        "spotify", "playlist", "rap", "pop", "rock", "beat"
+      ],
+      "essen": [
+        "essen", "hunger", "kochen", "rezept", "pizza", "sushi",
+        "trinken", "kaffee", "tee", "snack", "lecker", "geschmack"
+      ],
+      "technik": [
+        "computer", "pc", "laptop", "handy", "internet", "code",
+        "programmier", "server", "software", "hardware", "gpu", "cpu"
+      ],
+      "kreativ": [
+        "zeichnen", "malen", "kunst", "art", "design", "foto",
+        "video", "edit", "kreativ", "basteln", "schreiben"
+      ],
+      "stream": [
+        "stream", "live", "twitch", "youtube", "chat", "viewer",
+        "sub", "donation", "emote", "overlay", "obs"
+      ],
+      "beziehung": [
+        "date", "freundin", "freund", "partner", "crush", "verliebt",
+        "küssen", "umarmen", "vermissen", "zusammen", "trennung"
+      ],
+      "beleidigung": [
+        "idiot", "dumm", "hass", "hurensohn", "bastard", "scheiße",
+        "arsch", "penner", "missgeburt", "spast", "vollidiot", "depp",
+        "nervst", "nerv", "kacke", "müll"
+      ],
+      "flirt": [
+        "süß", "hübsch", "schön", "hot", "sexy", "attraktiv",
+        "liebst du", "magst du", "date", "küssen", "kuscheln"
+      ],
+      "alltag": [
+        "arbeit", "schule", "uni", "lernen", "hausaufgabe",
+        "wetter", "regen", "sonne", "einkaufen", "putzen"
+      ],
+      "philosophie": [
+        "sinn", "leben", "tod", "existenz", "warum", "bedeutung",
+        "gott", "seele", "bewusstsein", "realität", "zeit"
+      ],
+      "horror": [
+        "gruselig", "creepy", "angst", "horror", "monster",
+        "geist", "dunkel", "alptraum", "unheimlich", "poppy"
+      ],
+      "anime": [
+        "anime", "manga", "waifu", "kawaii", "otaku", "cosplay",
+        "vtuber", "avatar", "japan", "sempai", "senpai"
+      ],
+      "cosplay": [
+        "cosplay", "kostüm", "verkleiden", "charakter", "rolle",
+        "poppy", "playtime", "puppe", "outfit"
+      ],
+      "gefühle": [
+        "fühlen", "emotion", "herz", "seele", "warm", "kalt",
+        "weinen", "lachen", "freude", "schmerz", "wut"
+      ],
+      "rat": [
+        "rat", "tipp", "hilfe", "empfehlung", "meinung", "was soll",
+        "wie soll", "was würdest", "vorschlag"
+      ],
+      "wissen": [
+        "was ist", "wer ist", "warum ist", "wie funktioniert",
+        "erkläre", "definition", "bedeutet", "heißt das"
+      ]
+    },
+
+    "allow_dynamic": true,
+    "max_categories": 50,
+    "max_depth": 2,
+    "max_items": 200,
+
+    "reflection": {
+      "enabled": true,
+      "header": "THEMEN-REFLEXION (innerlich, NICHT aussprechen):",
+      "detected_label": "Erkanntes Thema",
+      "best_label": "Was bei diesem Thema vorher gut funktioniert hat:",
+      "worst_label": "Warnung — das lief bei diesem Thema schlecht:",
+      "recommend_label": "→ Empfohlene Strategie:",
+      "max_items": 3,
+      "max_chars": 200
+    },
+
+    "recall": {
+      "enabled": true,
+      "header": "THEMEN-ERINNERUNGEN",
+      "hauptstrang": "★ HAUPTTHEMA",
+      "per_category": 1,
+      "depth": 0,
+      "children_per_node": 1,
+      "max_total": 4,
+      "max_chars": 250,
+      "min_diff": 2,
+      "sort": "recent",
+      "order": "latest_first"
+    },
+
+    "rating_labels": {
+      "0": "katastrophal",
+      "1": "sehr schlecht",
+      "2": "schlecht",
+      "3": "eher schlecht",
+      "4": "unterdurchschnittlich",
+      "5": "neutral",
+      "6": "okay",
+      "7": "gut",
+      "8": "sehr gut",
+      "9": "ausgezeichnet",
+      "10": "perfekt"
+    }
+  }
+]

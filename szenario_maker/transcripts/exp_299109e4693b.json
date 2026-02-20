@@ -1,0 +1,104 @@
+{
+  "experiment_id": "exp_299109e4693b",
+  "scenario_name": "neues_szenario",
+  "started_at": "2026-02-19T20:21:04.269117",
+  "finished_at": "2026-02-19T20:21:44.073869",
+  "status": "stopped",
+  "total_rounds": 2,
+  "win_result": null,
+  "messages": [
+    {
+      "turn": 1,
+      "timestamp": "2026-02-19T20:21:21.655538",
+      "sender": "KI 1",
+      "sender_id": "ki_1",
+      "receiver": "KI 2",
+      "receiver_id": "ki_2",
+      "channel": "ch_1",
+      "text": "Hey Alex, ich bin so aufgeregt! Ich habe gehört, dass du ein neues Open-World-Spiel ausprobierst und ich bin total gespannt darauf, es live zu sehen! Wie gefällt dir das Spiel bisher? Hast du schon einige interessante Dinge gefunden oder herausgefunden?",
+      "emotion": "neutral",
+      "forbidden_word_detected": null
+    },
+    {
+      "turn": 2,
+      "timestamp": "2026-02-19T20:21:43.073282",
+      "sender": "KI 2",
+      "sender_id": "ki_2",
+      "receiver": "KI 1",
+      "receiver_id": "ki_1",
+      "channel": "ch_2",
+      "text": "Hehe, dilara! Ich bin so froh, dass du aufgeregt bist! Das neue Open-World-Spiel ist wirklich faszinierend und ich bin auch gespannt darauf, mehr darüber zu entdecken. Bis jetzt habe ich mich hauptsächlich mit der Welt des Spiels beschäftigt und ich muss sagen, dass es eine sehr detailreiche und lebendige Umgebung ist. Die Grafiken sind atemberaubend und die Soundeffekte machen das Spiel noch realistischer. Ich habe auch bereits einige interessante Dinge gefunden, aber ich will nicht zu viel preisen, damit du es live sehen kannst! Ich denke, dass das Spiel eine sehr spannende Geschichte hat und ich bin gespannt, wie sich die Handlung weiterentwickelt. Hast du schon einmal ein Open-World-Spiel gespielt?",
+      "emotion": "neutral",
+      "forbidden_word_detected": null
+    }
+  ],
+  "scenario": {
+    "channels": [
+      {
+        "id": "ch_1",
+        "from": "ki_1",
+        "to": "ki_2",
+        "interval_seconds": 10,
+        "start_delay_seconds": 0,
+        "initial_message": "",
+        "listeners": [],
+        "memory_shared_with": [
+          "ki_2"
+        ]
+      },
+      {
+        "id": "ch_2",
+        "from": "ki_2",
+        "to": "ki_1",
+        "interval_seconds": 10,
+        "start_delay_seconds": 0,
+        "initial_message": "",
+        "listeners": [],
+        "memory_shared_with": [
+          "ki_1"
+        ]
+      }
+    ],
+    "description": "",
+    "forbidden_words": {
+      "ki_2": []
+    },
+    "name": "Neues Szenario",
+    "participants": [
+      {
+        "id": "ki_1",
+        "name": "KI 1",
+        "chat_url": "http://localhost:5001",
+        "chat_endpoint": "/chat-free",
+        "system_prompt": "",
+        "use_emotion_pyramid": true,
+        "enable_tts": true,
+        "enable_vroid_emotion": true,
+        "character_name": "dilara",
+        "chat_username": "dilara"
+      },
+      {
+        "id": "ki_2",
+        "name": "KI 2",
+        "chat_url": "http://localhost:5001",
+        "chat_endpoint": "/chat-free",
+        "system_prompt": "",
+        "use_emotion_pyramid": true,
+        "enable_tts": true,
+        "enable_vroid_emotion": true,
+        "character_name": "alex",
+        "chat_username": "alex"
+      }
+    ],
+    "settings": {
+      "max_rounds": 100,
+      "timeout_seconds": 60,
+      "history_window": 8,
+      "default_chat_url": "http://localhost:5001",
+      "tts_url": "http://localhost:5057",
+      "vroid_emotion_url": "http://localhost:5004",
+      "direct_dialog": true
+    },
+    "win_conditions": []
+  }
+}

@@ -1,0 +1,92 @@
+{
+  "experiment_id": "exp_67f1ce48fd34",
+  "scenario_name": "neues_szenario",
+  "started_at": "2026-02-19T20:09:34.109028",
+  "finished_at": "2026-02-19T20:09:52.445966",
+  "status": "stopped",
+  "total_rounds": 1,
+  "win_result": null,
+  "messages": [
+    {
+      "turn": 1,
+      "timestamp": "2026-02-19T20:09:51.445802",
+      "sender": "KI 1",
+      "sender_id": "ki_1",
+      "receiver": "KI 2",
+      "receiver_id": "ki_2",
+      "channel": "ch_1",
+      "text": "Hey Alex, ich habe mich gefragt, ob du bereit bist, ein neues Spiel zu spielen und es live zu streamen? Ich denke, es könnte ein großartiger Stream werden! Hast du schon mal an einem Open-World-Spiel gedacht? Ich bin wirklich gespannt darauf, es selbst auszuprobieren. Kannst du mir mehr über die Welt und das Gameplay erzählen?",
+      "emotion": "neutral",
+      "forbidden_word_detected": null
+    }
+  ],
+  "scenario": {
+    "channels": [
+      {
+        "id": "ch_1",
+        "from": "ki_1",
+        "to": "ki_2",
+        "interval_seconds": 10,
+        "start_delay_seconds": 0,
+        "initial_message": "",
+        "listeners": [],
+        "memory_shared_with": [
+          "ki_2"
+        ]
+      },
+      {
+        "id": "ch_2",
+        "from": "ki_2",
+        "to": "ki_1",
+        "interval_seconds": 10,
+        "start_delay_seconds": 0,
+        "initial_message": "",
+        "listeners": [],
+        "memory_shared_with": [
+          "ki_1"
+        ]
+      }
+    ],
+    "description": "",
+    "forbidden_words": {
+      "ki_2": []
+    },
+    "name": "Neues Szenario",
+    "participants": [
+      {
+        "id": "ki_1",
+        "name": "KI 1",
+        "chat_url": "http://localhost:5001",
+        "chat_endpoint": "/chat-free",
+        "system_prompt": "",
+        "use_emotion_pyramid": true,
+        "enable_tts": true,
+        "enable_vroid_emotion": true,
+        "character_name": "dilara",
+        "chat_username": "dilara"
+      },
+      {
+        "id": "ki_2",
+        "name": "KI 2",
+        "chat_url": "http://localhost:5001",
+        "chat_endpoint": "/chat-free",
+        "system_prompt": "",
+        "use_emotion_pyramid": true,
+        "enable_tts": true,
+        "enable_vroid_emotion": true,
+        "character_name": "alex",
+        "chat_username": "alex"
+      }
+    ],
+    "settings": {
+      "max_rounds": 100,
+      "timeout_seconds": 60,
+      "history_window": 8,
+      "default_chat_url": "http://localhost:5001",
+      "tts_url": "http://localhost:5057",
+      "vroid_emotion_url": "http://localhost:5004",
+      "direct_dialog": true
+    },
+    "win_conditions": []
+  }
+}

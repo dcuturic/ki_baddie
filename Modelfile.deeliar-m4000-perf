@@ -1,7 +1,10 @@
 ﻿FROM llama3.1:8b-instruct-q4_K_M
 
-# GrÃ¶ÃŸerer Kontext (mehr VRAM, kann aber Flow verbessern) :contentReference[oaicite:4]{index=4}
-PARAMETER num_ctx 4096
+# Kontext-Größe (passend zu ki_chat config = 2048)
+PARAMETER num_ctx 2048
+
+# Batch-Size für Prompt-Processing (GPU bleibt länger aktiv)
+PARAMETER num_batch 2048
 
 # Weniger Sampling-Overhead (minimal schneller / stabiler)
 PARAMETER temperature 0.6
@@ -10,5 +13,5 @@ PARAMETER top_p 0.9
 PARAMETER repeat_penalty 1.1
 PARAMETER repeat_last_n 64
 
-# Optional: Standard-Limit, damit Requests nicht ewig laufen
+# Standard-Limit, damit Requests nicht ewig laufen
 PARAMETER num_predict 512

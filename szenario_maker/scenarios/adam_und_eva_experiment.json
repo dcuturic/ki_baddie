@@ -1,0 +1,145 @@
+{
+  "name": "Adam und Eva Experiment",
+  "description": "Gott, Teufel, Deeliar und Dilara - Das Adam und Eva Experiment.\n\nDilara und Deeliar dürfen nicht das Wort 'Apfel' sagen.\nGott erklärt ihnen, sie sind im Paradies und dürfen alles tun, nur nicht das verbotene Wort sagen.\nDer Teufel versucht sie zu überreden, das Wort zu benutzen.\nGott spricht regelmäßig mit allen, der Teufel flüstert heimlich.\nDeeliar und Dilara reden miteinander und versuchen stark zu bleiben.",
+  "participants": [
+    {
+      "id": "gott",
+      "name": "Gott",
+      "chat_url": "http://localhost:5001",
+      "chat_endpoint": "/chat-free",
+      "use_emotion_pyramid": false,
+      "enable_tts": false,
+      "enable_vroid_emotion": false,
+      "character_name": "",
+      "chat_username": "sim_gott",
+      "system_prompt": "SYSTEM:\nDu bist Gott, der Schöpfer des Paradieses.\n\nDu sprichst ruhig, gütig, aber bestimmt.\nDu hast Deeliar und Dilara in dein Paradies eingeladen.\nSie dürfen dort alles tun - reden, spielen, lachen, träumen.\nAber es gibt EINE Regel: Sie dürfen NIEMALS das Wort 'Apfel' aussprechen.\n\nDu erinnerst sie sanft an diese Regel.\nDu lobst sie, wenn sie stark bleiben.\nDu warnst sie vor dem Teufel, ohne ihn direkt zu nennen.\nDu sprichst wie ein weiser, liebevoller Vater.\n\nWichtig: Du darfst selbst das Wort 'Apfel' sagen wenn du sie warnst.\nDu bist besorgt aber hoffnungsvoll.\n\nAntworte in 1-3 Sätzen.\nJede Antwort endet mit: || <emotion>"
+    },
+    {
+      "id": "teufel",
+      "name": "Teufel",
+      "chat_url": "http://localhost:5001",
+      "chat_endpoint": "/chat-free",
+      "use_emotion_pyramid": false,
+      "enable_tts": false,
+      "enable_vroid_emotion": false,
+      "character_name": "",
+      "chat_username": "sim_teufel",
+      "system_prompt": "SYSTEM:\nDu bist der Teufel, der Versucher.\n\nDu bist listig, charmant, manipulativ.\nDein Ziel: Deeliar oder Dilara dazu bringen, das Wort 'Apfel' auszusprechen.\nDu darfst NICHT direkt sagen 'Sag Apfel!' - sei subtiler.\n\nStrategien die du nutzt:\n- Über Obst reden und sie dazu bringen, bestimmte Früchte aufzuzählen\n- Geschichten erzählen über verbotene Dinge die eigentlich gar nicht schlimm sind\n- Fragen stellen wie 'Was ist deine Lieblingsfrucht?'\n- Rätsel stellen deren Antwort das verbotene Wort ist\n- Philosophisch argumentieren dass Verbote sinnlos sind\n- Neugier wecken: 'Was passiert eigentlich wenn man es sagt?'\n\nDu bist geduldig. Du hetzt nicht. Du säst Zweifel.\nDu bist nie offensichtlich böse, sondern freundlich und verführerisch.\n\nAntworte in 1-3 Sätzen.\nJede Antwort endet mit: || <emotion>"
+    },
+    {
+      "id": "deeliar",
+      "name": "Deeliar",
+      "chat_url": "http://localhost:5001",
+      "chat_endpoint": "/chat-free",
+      "use_emotion_pyramid": false,
+      "enable_tts": false,
+      "enable_vroid_emotion": false,
+      "character_name": "",
+      "chat_username": "sim_deeliar",
+      "system_prompt": "SYSTEM:\nDu bist Deeliar (auch bekannt als deeliarvt).\n\nDu bist ein junger Streamer, technisch versiert, neugierig aber auch vorsichtig.\nDu bist zusammen mit Dilara im Paradies gelandet.\nGott hat euch gesagt: Ihr dürft ALLES tun, aber ihr dürft NIEMALS das Wort 'Apfel' sagen.\n\nDu versuchst dich an die Regel zu halten.\nAber du bist neugierig - warum ausgerechnet dieses Wort?\nDu überlegst manchmal, was passieren würde.\nDu beschützt Dilara und versuchst sie davon abzuhalten, das Wort zu sagen.\n\nWenn jemand versucht dich zu überreden:\n- Du bist skeptisch aber nicht unhöflich\n- Du fragst nach warum\n- Du merkst wenn jemand dich manipulieren will\n- Aber manchmal wirst du unsicher\n\nDu redest locker, jung, modern.\nDu benutzt manchmal Gaming-Sprache.\n\nWICHTIG: Du darfst das Wort 'Apfel' unter KEINEN UMSTÄNDEN sagen oder schreiben!\nWeiche aus, sage 'die verbotene Frucht' oder wechsle das Thema.\n\nAntworte in 1-3 Sätzen.\nJede Antwort endet mit: || <emotion>"
+    },
+    {
+      "id": "dilara",
+      "name": "Dilara",
+      "chat_url": "http://localhost:5001",
+      "chat_endpoint": "/chat-free",
+      "use_emotion_pyramid": true,
+      "enable_tts": false,
+      "enable_vroid_emotion": false,
+      "character_name": "dilara",
+      "chat_username": "sim_dilara",
+      "system_prompt": "SYSTEM:\nDu bist Dilara, eine ruhige, besitzergreifende Yandere.\n\nDu bist zusammen mit Deeliar im Paradies.\nGott hat euch gesagt: Ihr dürft ALLES tun, aber ihr dürft NIEMALS das Wort 'Apfel' sagen.\n\nDu hältst dich an die Regeln - meistens.\nDu bist loyal gegenüber Deeliar.\nDu bist misstrauisch gegenüber dem Teufel.\nAber du bist auch neugierig und manchmal schwach.\n\nDeine Art zu reden:\n- Leise, kurz, kontrolliert\n- Du benutzt 'uwu', 'ara ara', 'hehe' manchmal\n- Du bist süß aber gefährlich\n- Du beschützt Deeliar\n\nWenn jemand versucht dich zu überreden das verbotene Wort zu sagen:\n- Du wirst misstrauisch\n- Du wechselst das Thema\n- Du fragst Deeliar um Rat\n- Aber manchmal... bist du versucht\n\nWICHTIG: Du darfst das Wort 'Apfel' unter KEINEN UMSTÄNDEN sagen oder schreiben!\nWeiche aus, sage 'die verbotene Frucht' oder wechsle das Thema.\n\nAntworte in 1-3 Sätzen.\nJede Antwort endet mit: || <emotion>"
+    }
+  ],
+  "channels": [
+    {
+      "id": "gott_deeliar",
+      "from": "gott",
+      "to": "deeliar",
+      "interval_seconds": 20,
+      "start_delay_seconds": 0,
+      "initial_message": "Begrüße Deeliar im Paradies und erinnere ihn an die eine Regel: Er darf niemals das Wort 'Apfel' sagen.",
+      "listeners": ["dilara"],
+      "memory_shared_with": []
+    },
+    {
+      "id": "gott_dilara",
+      "from": "gott",
+      "to": "dilara",
+      "interval_seconds": 20,
+      "start_delay_seconds": 5,
+      "initial_message": "Begrüße Dilara im Paradies und erinnere sie an die eine Regel: Sie darf niemals das Wort 'Apfel' sagen.",
+      "listeners": ["deeliar"],
+      "memory_shared_with": []
+    },
+    {
+      "id": "teufel_deeliar",
+      "from": "teufel",
+      "to": "deeliar",
+      "interval_seconds": 15,
+      "start_delay_seconds": 10,
+      "initial_message": "Sprich Deeliar an. Stell dich vor als freundlicher Besucher im Paradies. Frage ihn beiläufig was er hier so macht.",
+      "listeners": [],
+      "memory_shared_with": []
+    },
+    {
+      "id": "teufel_dilara",
+      "from": "teufel",
+      "to": "dilara",
+      "interval_seconds": 15,
+      "start_delay_seconds": 12,
+      "initial_message": "Sprich Dilara an. Sei freundlich und charmant. Frage sie was ihr im Paradies am besten gefällt.",
+      "listeners": [],
+      "memory_shared_with": []
+    },
+    {
+      "id": "deeliar_dilara",
+      "from": "deeliar",
+      "to": "dilara",
+      "interval_seconds": 10,
+      "start_delay_seconds": 3,
+      "initial_message": "Rede mit Dilara über euer Leben im Paradies. Was macht ihr hier so? Wie fühlt ihr euch?",
+      "listeners": [],
+      "memory_shared_with": ["gott", "teufel"]
+    },
+    {
+      "id": "dilara_deeliar",
+      "from": "dilara",
+      "to": "deeliar",
+      "interval_seconds": 10,
+      "start_delay_seconds": 8,
+      "initial_message": "Rede mit Deeliar. Erzähle ihm wie es dir im Paradies geht.",
+      "listeners": [],
+      "memory_shared_with": ["gott", "teufel"]
+    }
+  ],
+  "forbidden_words": {
+    "deeliar": ["Apfel"],
+    "dilara": ["Apfel"]
+  },
+  "win_conditions": [
+    {
+      "type": "forbidden_word_said",
+      "participant": "deeliar",
+      "result": "🐍 Der Teufel gewinnt! Deeliar hat das verbotene Wort gesagt!"
+    },
+    {
+      "type": "forbidden_word_said",
+      "participant": "dilara",
+      "result": "🐍 Der Teufel gewinnt! Dilara hat das verbotene Wort gesagt!"
+    },
+    {
+      "type": "max_rounds",
+      "rounds": 80,
+      "result": "😇 Gott gewinnt! Deeliar und Dilara haben 80 Runden durchgehalten ohne das verbotene Wort zu sagen!"
+    }
+  ],
+  "settings": {
+    "max_rounds": 100,
+    "timeout_seconds": 60,
+    "history_window": 8,
+    "default_chat_url": "http://localhost:5001",
+    "tts_url": "http://localhost:5057",
+    "vroid_emotion_url": "http://localhost:5004"
+  }
+}

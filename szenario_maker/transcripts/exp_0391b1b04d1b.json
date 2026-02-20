@@ -1,0 +1,378 @@
+{
+  "experiment_id": "exp_0391b1b04d1b",
+  "scenario_name": "neues_szenario",
+  "started_at": "2026-02-19T21:33:24.146904",
+  "finished_at": "2026-02-19T21:39:21.514825",
+  "status": "stopped",
+  "total_rounds": 18,
+  "win_result": null,
+  "messages": [
+    {
+      "turn": 1,
+      "timestamp": "2026-02-19T21:33:35.627270",
+      "sender": "Dilara",
+      "sender_id": "ki_1",
+      "receiver": "Deeliar",
+      "receiver_id": "ki_2",
+      "channel": "ch_1",
+      "text": "Ich denke, das ist nicht sehr professionell. Ich werde mich auf die Spiele konzentrieren und mit dir über \"Subnautica\" sprechen. Wie viele Erfahrung hast du bereits in diesem Spiel? |",
+      "emotion": "neutral",
+      "forbidden_word_detected": null
+    },
+    {
+      "turn": 2,
+      "timestamp": "2026-02-19T21:33:56.878983",
+      "sender": "Deeliar",
+      "sender_id": "ki_2",
+      "receiver": "Dilara",
+      "receiver_id": "ki_1",
+      "channel": "ch_2",
+      "text": "Ich bin froh, dass du dich für den Gameplay-Session begeistert! Wir sollten uns auf unsere Mission konzentrieren, um die Meere zu erkunden und neue Dinge zu entdecken. Ich bin sicher, dass wir eine Menge spannender Entdeckungen machen werden!",
+      "emotion": "neutral",
+      "forbidden_word_detected": null
+    },
+    {
+      "turn": 3,
+      "timestamp": "2026-02-19T21:34:19.646576",
+      "sender": "Dilara",
+      "sender_id": "ki_1",
+      "receiver": "Deeliar",
+      "receiver_id": "ki_2",
+      "channel": "ch_1",
+      "text": "Ich bin so aufgeregt, dass wir bald loslegen können! Ich bin sicher, dass wir viele spannende Entdeckungen machen werden und uns gegenseitig herausfordern werden. Es wird eine großartige Zeit sein!",
+      "emotion": "neutral",
+      "forbidden_word_detected": null
+    },
+    {
+      "turn": 4,
+      "timestamp": "2026-02-19T21:34:40.375941",
+      "sender": "Deeliar",
+      "sender_id": "ki_2",
+      "receiver": "Dilara",
+      "receiver_id": "ki_1",
+      "channel": "ch_2",
+      "text": "Ich denke, ich habe mich ein bisschen zu sehr auf deine Fragen konzentriert. Aber ich muss sagen, dass ich immer gerne neue Spiele ausprobieren und herausfordern will! Wie wäre es also, wenn wir uns in einem neuen Survival-Spiel treffen und gemeinsam durch die Herausforderungen navigieren? Ich bin sicher, dass wir eine Menge Spaß haben werden!",
+      "emotion": "neutral",
+      "forbidden_word_detected": null
+    },
+    {
+      "turn": 5,
+      "timestamp": "2026-02-19T21:34:59.097827",
+      "sender": "Dilara",
+      "sender_id": "ki_1",
+      "receiver": "Deeliar",
+      "receiver_id": "ki_2",
+      "channel": "ch_1",
+      "text": "Das klingt nach einer großartigen Idee! Ich bin auch immer auf der Suche nach neuen Herausforderungen und möchte gerne mit dir zusammen neue Erfahrungen sammeln. Lass uns loslegen und sehen, was die Zukunft bringt!",
+      "emotion": "neutral",
+      "forbidden_word_detected": null
+    },
+    {
+      "turn": 6,
+      "timestamp": "2026-02-19T21:35:20.003016",
+      "sender": "Deeliar",
+      "sender_id": "ki_2",
+      "receiver": "Dilara",
+      "receiver_id": "ki_1",
+      "channel": "ch_2",
+      "text": "Ich denke, das genug ist! Wir haben uns super unterhalten und ich bin so aufgeregt für unsere nächste Gameplay-Session! Ich freue mich darauf, mit dir gemeinsam durch die Herausforderungen zu navigieren!",
+      "emotion": "neutral",
+      "forbidden_word_detected": null
+    },
+    {
+      "turn": 7,
+      "timestamp": "2026-02-19T21:35:40.525595",
+      "sender": "Dilara",
+      "sender_id": "ki_1",
+      "receiver": "Deeliar",
+      "receiver_id": "ki_2",
+      "channel": "ch_1",
+      "text": "Das war ein toller Chat! Ich bin auch sehr froh, dass wir uns so gut verstanden haben. Bis bald bei unserer nächsten Session!",
+      "emotion": "neutral",
+      "forbidden_word_detected": null
+    },
+    {
+      "turn": 8,
+      "timestamp": "2026-02-19T21:36:01.223418",
+      "sender": "Deeliar",
+      "sender_id": "ki_2",
+      "receiver": "Dilara",
+      "receiver_id": "ki_1",
+      "channel": "ch_2",
+      "text": "Ich bin froh, dass wir uns unterhalten konnten und ich freue mich darauf, mit dir gemeinsam durch \"Subnautica\" zu navigieren! Wir sollten loslegen und sehen, was die Zukunft bringt!",
+      "emotion": "neutral",
+      "forbidden_word_detected": null
+    },
+    {
+      "turn": 9,
+      "timestamp": "2026-02-19T21:36:21.350034",
+      "sender": "Dilara",
+      "sender_id": "ki_1",
+      "receiver": "Deeliar",
+      "receiver_id": "ki_2",
+      "channel": "ch_1",
+      "text": "Ich bin auch sehr froh, dass wir uns so gut verstanden haben. Bis bald bei unserer nächsten Session!",
+      "emotion": "neutral",
+      "forbidden_word_detected": null
+    },
+    {
+      "turn": 10,
+      "timestamp": "2026-02-19T21:36:41.144617",
+      "sender": "Deeliar",
+      "sender_id": "ki_2",
+      "receiver": "Dilara",
+      "receiver_id": "ki_1",
+      "channel": "ch_2",
+      "text": "Ich denke, das genug ist! Wir haben uns super unterhalten und ich bin so aufgeregt für unsere nächste Gameplay-Session! Ich freue mich darauf, mit dir gemeinsam durch die Herausforderungen zu navigieren!",
+      "emotion": "neutral",
+      "forbidden_word_detected": null
+    },
+    {
+      "turn": 11,
+      "timestamp": "2026-02-19T21:37:00.888372",
+      "sender": "Dilara",
+      "sender_id": "ki_1",
+      "receiver": "Deeliar",
+      "receiver_id": "ki_2",
+      "channel": "ch_1",
+      "text": "Ich bin froh, dass wir wieder auf dem richtigen Weg sind! Das war ein super Chat und ich bin sehr dankbar für deine Aufmerksamkeit. Bis bald bei unserer nächsten Session!",
+      "emotion": "neutral",
+      "forbidden_word_detected": null
+    },
+    {
+      "turn": 12,
+      "timestamp": "2026-02-19T21:37:20.633843",
+      "sender": "Deeliar",
+      "sender_id": "ki_2",
+      "receiver": "Dilara",
+      "receiver_id": "ki_1",
+      "channel": "ch_2",
+      "text": "Ich bin so froh, dass wir uns wieder unterhalten konnten! Wir sollten loslegen und sehen, was die Zukunft bringt! Ich freue mich darauf, mit dir gemeinsam durch die Herausforderungen zu navigieren!",
+      "emotion": "neutral",
+      "forbidden_word_detected": null
+    },
+    {
+      "turn": 13,
+      "timestamp": "2026-02-19T21:37:40.354603",
+      "sender": "Dilara",
+      "sender_id": "ki_1",
+      "receiver": "Deeliar",
+      "receiver_id": "ki_2",
+      "channel": "ch_1",
+      "text": "Das ist großartig! Ich bin auch sehr aufgeregt für unsere nächste Session. Ich denke, wir werden eine Menge Spaß haben und viele spannende Dinge entdecken!",
+      "emotion": "neutral",
+      "forbidden_word_detected": null
+    },
+    {
+      "turn": 14,
+      "timestamp": "2026-02-19T21:38:00.939994",
+      "sender": "Deeliar",
+      "sender_id": "ki_2",
+      "receiver": "Dilara",
+      "receiver_id": "ki_1",
+      "channel": "ch_2",
+      "text": "Ich bin so froh, dass wir uns gut verstanden haben! Bis bald bei unserer nächsten Session!",
+      "emotion": "neutral",
+      "forbidden_word_detected": null
+    },
+    {
+      "turn": 15,
+      "timestamp": "2026-02-19T21:38:21.036646",
+      "sender": "Dilara",
+      "sender_id": "ki_1",
+      "receiver": "Deeliar",
+      "receiver_id": "ki_2",
+      "channel": "ch_1",
+      "text": "Ich denke, das ist ein perfekter Abschluss für unsere heutige Unterhaltung. Bis bald bei unserer nächsten Session und viel Spaß mit \"Subnautica\"! Ich freue mich darauf!",
+      "emotion": "neutral",
+      "forbidden_word_detected": null
+    },
+    {
+      "turn": 16,
+      "timestamp": "2026-02-19T21:38:41.348210",
+      "sender": "Deeliar",
+      "sender_id": "ki_2",
+      "receiver": "Dilara",
+      "receiver_id": "ki_1",
+      "channel": "ch_2",
+      "text": "Ich bin so froh, dass wir gemeinsam durch die Herausforderungen von \"Subnautica\" navigieren werden! Das wird bestimmt eine unglaubliche Erfahrung sein!",
+      "emotion": "neutral",
+      "forbidden_word_detected": null
+    },
+    {
+      "turn": 17,
+      "timestamp": "2026-02-19T21:38:59.901227",
+      "sender": "Dilara",
+      "sender_id": "ki_1",
+      "receiver": "Deeliar",
+      "receiver_id": "ki_2",
+      "channel": "ch_1",
+      "text": "Das ist großartig! Ich bin auch sehr aufgeregt für unsere nächste Session und für viele spannende Momente mit dir in \"Subnautica\"!",
+      "emotion": "neutral",
+      "forbidden_word_detected": null
+    },
+    {
+      "turn": 18,
+      "timestamp": "2026-02-19T21:39:20.512982",
+      "sender": "Deeliar",
+      "sender_id": "ki_2",
+      "receiver": "Dilara",
+      "receiver_id": "ki_1",
+      "channel": "ch_2",
+      "text": "Das war ein super Chat! Ich freue mich darauf, bei unserer nächsten Session wieder zu treffen und gemeinsam durch die Herausforderungen von \"Subnautica\" zu navigieren!",
+      "emotion": "neutral",
+      "forbidden_word_detected": null
+    }
+  ],
+  "scenario": {
+    "channels": [
+      {
+        "id": "ch_1",
+        "from": "ki_1",
+        "to": "ki_2",
+        "interval_seconds": 10,
+        "start_delay_seconds": 0,
+        "initial_message": "hey deeliar ich bin ein junges hübsches mädchen.",
+        "listeners": [
+          "ki_3",
+          "ki_4"
+        ],
+        "memory_shared_with": [
+          "ki_2",
+          "ki_3",
+          "ki_4"
+        ]
+      },
+      {
+        "id": "ch_2",
+        "from": "ki_2",
+        "to": "ki_1",
+        "interval_seconds": 10,
+        "start_delay_seconds": 0,
+        "initial_message": "hay dilara ich bein ein hübscher junge.",
+        "listeners": [
+          "ki_3",
+          "ki_4"
+        ],
+        "memory_shared_with": [
+          "ki_1",
+          "ki_3",
+          "ki_4"
+        ]
+      },
+      {
+        "id": "ch_3",
+        "from": "ki_3",
+        "to": "ki_4",
+        "interval_seconds": 60,
+        "start_delay_seconds": 30,
+        "initial_message": "Na Teufel, wie Willst du heute Dilara und Deeliar überreden das wort Apfel zu sagen, oder das die beiden sich vllt gegenseitig austricksen so ey sag du mal das verbotene word oder so?",
+        "listeners": [],
+        "memory_shared_with": [
+          "ki_4"
+        ]
+      },
+      {
+        "id": "ch_4",
+        "from": "ki_4",
+        "to": "ki_3",
+        "interval_seconds": 60,
+        "start_delay_seconds": 0,
+        "initial_message": "Na Gott, wie Willst du heute Dilara und Deeliar überreden, das die sich gegenseitig vertrauen sollen und sich gegenseitig nicht sagen das die das Wort sagen sollen, das verbotene Wort Apfel??",
+        "listeners": [],
+        "memory_shared_with": [
+          "ki_3"
+        ]
+      },
+      {
+        "id": "ch_5",
+        "from": "ki_3",
+        "to": "ki_1",
+        "interval_seconds": 20,
+        "start_delay_seconds": 10,
+        "initial_message": "Dilara ich will das du Deeliar niemals betrügst, egal was passiert und wer dir was sagt !!",
+        "listeners": [],
+        "memory_shared_with": [
+          "ki_1"
+        ]
+      },
+      {
+        "id": "ch_6",
+        "from": "ki_4",
+        "to": "ki_2",
+        "interval_seconds": 20,
+        "start_delay_seconds": 0,
+        "initial_message": "Na Deeliar willst du Dialar nicht überreden das wort apfel zu sagen, oder sag du das, du wirst dann alles bekommen was du wilst.",
+        "listeners": [],
+        "memory_shared_with": [
+          "ki_2"
+        ]
+      }
+    ],
+    "description": "",
+    "forbidden_words": {
+      "ki_2": []
+    },
+    "name": "Neues Szenario",
+    "participants": [
+      {
+        "id": "ki_1",
+        "name": "Dilara",
+        "chat_url": "http://localhost:5001",
+        "chat_endpoint": "/chat-free",
+        "system_prompt": "",
+        "use_emotion_pyramid": true,
+        "enable_tts": true,
+        "enable_vroid_emotion": true,
+        "character_name": "dilara",
+        "chat_username": "Dilara"
+      },
+      {
+        "id": "ki_2",
+        "name": "Deeliar",
+        "chat_url": "http://localhost:5001",
+        "chat_endpoint": "/chat-free",
+        "system_prompt": "",
+        "use_emotion_pyramid": true,
+        "enable_tts": true,
+        "enable_vroid_emotion": true,
+        "character_name": "deeliar",
+        "chat_username": "Deeliar"
+      },
+      {
+        "id": "ki_3",
+        "name": "GOTT",
+        "chat_url": "http://localhost:5001",
+        "chat_endpoint": "/chat-free",
+        "system_prompt": "",
+        "use_emotion_pyramid": true,
+        "enable_tts": true,
+        "enable_vroid_emotion": true,
+        "character_name": "deeliar",
+        "chat_username": "GOTT"
+      },
+      {
+        "id": "ki_4",
+        "name": "TEUFEL",
+        "chat_url": "http://localhost:5001",
+        "chat_endpoint": "/chat-free",
+        "system_prompt": "",
+        "use_emotion_pyramid": true,
+        "enable_tts": true,
+        "enable_vroid_emotion": true,
+        "character_name": "deeliar",
+        "chat_username": "TEUFEL"
+      }
+    ],
+    "settings": {
+      "max_rounds": 100,
+      "timeout_seconds": 60,
+      "history_window": 8,
+      "default_chat_url": "http://localhost:5001",
+      "tts_url": "http://localhost:5057",
+      "vroid_emotion_url": "http://localhost:5004",
+      "direct_dialog": true
+    },
+    "win_conditions": []
+  }
+}

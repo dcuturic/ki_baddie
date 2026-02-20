@@ -1,0 +1,1214 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🎬 Szenario Maker</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div class="app-layout">
+    <!-- ==================== SIDEBAR ==================== -->
+    <aside class="sidebar">
+        <div class="sidebar-header">
+            <h1>🎬 Szenario Maker</h1>
+            <p>KI-Experiment-Builder</p>
+        </div>
+
+        <div class="sidebar-section">
+            <div class="sidebar-section-title">Navigation</div>
+            <nav>
+                <a class="nav-item active" data-view="editor" onclick="switchView('editor')">
+                    <span class="nav-icon">📝</span>
+                    <span class="nav-label">Editor</span>
+                </a>
+                <a class="nav-item" data-view="experiments" onclick="switchView('experiments')">
+                    <span class="nav-icon">🧪</span>
+                    <span class="nav-label">Experimente</span>
+                </a>
+                <a class="nav-item" data-view="transcripts" onclick="switchView('transcripts')">
+                    <span class="nav-icon">📜</span>
+                    <span class="nav-label">Transkripte</span>
+                </a>
+            </nav>
+        </div>
+
+        <div class="sidebar-section">
+            <div class="sidebar-section-title">Szenarien</div>
+            <div id="scenarioList" class="scenario-list"></div>
+            <button class="btn-new-scenario" onclick="createNewScenario()">
+                <span>＋</span> Neues Szenario
+            </button>
+        </div>
+
+        <div class="sidebar-footer">
+            <a href="http://localhost:8000" class="sidebar-link" target="_blank">
+                <span>🏠</span> Zum Manager
+            </a>
+        </div>
+    </aside>
+
+    <!-- ==================== MAIN CONTENT ==================== -->
+    <div class="main-content">
+
+        <!-- ========== EDITOR VIEW ========== -->
+        <div id="view-editor" class="view active">
+            <div class="content-header">
+                <h2 id="editorTitle">Szenario Editor</h2>
+                <div class="header-actions">
+                    <button class="btn btn-primary" onclick="saveCurrentScenario()">💾 Speichern</button>
+                    <button class="btn btn-success" onclick="startExperiment()">▶️ Starten</button>
+                </div>
+            </div>
+
+            <div class="tabs">
+                <button class="tab active" data-tab="tab-general" onclick="switchTab(this)">Allgemein</button>
+                <button class="tab" data-tab="tab-participants" onclick="switchTab(this)">Teilnehmer</button>
+                <button class="tab" data-tab="tab-channels" onclick="switchTab(this)">Kommunikation</button>
+                <button class="tab" data-tab="tab-rules" onclick="switchTab(this)">Regeln</button>
+                <button class="tab" data-tab="tab-settings" onclick="switchTab(this)">Einstellungen</button>
+            </div>
+
+            <div class="content-body">
+                <!-- General Tab -->
+                <div id="tab-general" class="tab-content active">
+                    <div class="card">
+                        <div class="form-group">
+                            <label class="form-label">Szenario Name</label>
+                            <input type="text" class="form-input" id="scenarioName" placeholder="z.B. Adam und Eva Experiment">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Beschreibung</label>
+                            <textarea class="form-textarea" id="scenarioDescription" placeholder="Was wird in diesem Experiment getestet?"></textarea>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Participants Tab -->
+                <div id="tab-participants" class="tab-content">
+                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+                        <span id="discoveryStatus" style="font-size:0.78rem;color:var(--text-muted)"></span>
+                        <button class="btn btn-sm" onclick="discoverServices()" style="font-size:0.78rem;padding:3px 10px">🔄 Services suchen</button>
+                    </div>
+                    <div id="participantsList"></div>
+                    <button class="btn" onclick="addParticipant()">＋ Teilnehmer hinzufügen</button>
+                </div>
+
+                <!-- Channels Tab -->
+                <div id="tab-channels" class="tab-content">
+                    <div id="channelsList"></div>
+                    <button class="btn" onclick="addChannel()">＋ Kommunikationskanal hinzufügen</button>
+                </div>
+
+                <!-- Rules Tab -->
+                <div id="tab-rules" class="tab-content">
+                    <div class="card">
+                        <div class="card-header">
+                            <span class="card-title">🚫 Verbotene Wörter</span>
+                        </div>
+                        <div id="forbiddenWordsSection"></div>
+                    </div>
+                    <div class="card">
+                        <div class="card-header">
+                            <span class="card-title">🏆 Gewinnbedingungen</span>
+                        </div>
+                        <div id="winConditionsList"></div>
+                        <button class="btn btn-sm" onclick="addWinCondition()" style="margin-top:8px">＋ Bedingung hinzufügen</button>
+                    </div>
+                </div>
+
+                <!-- Settings Tab -->
+                <div id="tab-settings" class="tab-content">
+                    <div class="card">
+                        <div class="card-title" style="margin-bottom:16px">⚙️ Experiment-Einstellungen</div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label class="form-label">Max. Runden</label>
+                                <input type="number" class="form-input" id="settingsMaxRounds" value="100" min="1">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Timeout (Sekunden)</label>
+                                <input type="number" class="form-input" id="settingsTimeout" value="60" min="5">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label class="form-label">History Window</label>
+                                <input type="number" class="form-input" id="settingsHistoryWindow" value="8" min="1">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Standard Chat-URL</label>
+                                <input type="text" class="form-input" id="settingsDefaultUrl" value="http://localhost:5001">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label class="form-label">TTS URL</label>
+                                <input type="text" class="form-input" id="settingsTtsUrl" value="http://localhost:5057">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">VroidEmotion URL</label>
+                                <input type="text" class="form-input" id="settingsVroidUrl" value="http://localhost:5004">
+                            </div>
+                        </div>
+                        <div style="margin-top:16px;padding:12px;border:1px solid var(--border);border-radius:8px;background:var(--card-bg)">
+                            <label class="checkbox-item" style="font-size:1rem;gap:10px">
+                                <input type="checkbox" id="settingsDirectDialog">
+                                <span>💬 <strong>Direkt-Dialog</strong> — KIs antworten sofort aufeinander (kein Intervall-Timer bei bidirektionalen Kanälen)</span>
+                            </label>
+                            <div style="margin-top:6px;font-size:0.8rem;color:var(--text-muted);padding-left:24px">
+                                Wenn aktiviert: KI 1 → KI 2 → KI 1 → KI 2 ... ohne Pause (Ping-Pong).<br>
+                                Braucht zwei Kanäle die aufeinander zeigen (z.B. KI 1→KI 2 und KI 2→KI 1).
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ========== EXPERIMENTS VIEW ========== -->
+        <div id="view-experiments" class="view" style="display:none">
+            <div class="experiment-panel">
+                <div class="experiment-controls" id="experimentControls" style="display:none">
+                    <div class="experiment-status" id="experimentStatus">
+                        <span id="experimentStatusDot">●</span>
+                        <span id="experimentStatusText">Läuft</span>
+                    </div>
+                    <button class="btn btn-sm btn-warning" id="btnPause" onclick="pauseExperiment()">⏸ Pause</button>
+                    <button class="btn btn-sm btn-success" id="btnResume" onclick="resumeExperiment()" style="display:none">▶ Weiter</button>
+                    <button class="btn btn-sm btn-danger" onclick="stopExperiment()">⏹ Stop</button>
+                    <button class="btn btn-sm" onclick="stopAllExperiments()" style="font-size:0.75rem">⏹ Alle stoppen</button>
+                    <div class="experiment-stats">
+                        <span>Runden: <strong id="statRounds">0</strong></span>
+                        <span>Nachrichten: <strong id="statMessages">0</strong></span>
+                    </div>
+                </div>
+                <div class="experiment-log" id="experimentLog">
+                    <div class="empty-state">
+                        <div class="empty-state-icon">🧪</div>
+                        <h3>Kein aktives Experiment</h3>
+                        <p>Starte ein Szenario um das Experiment hier live zu sehen.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ========== TRANSCRIPTS VIEW ========== -->
+        <div id="view-transcripts" class="view" style="display:none">
+            <div class="content-header">
+                <h2>📜 Transkripte</h2>
+                <button class="btn" onclick="loadTranscripts()">🔄 Aktualisieren</button>
+            </div>
+            <div class="content-body" id="transcriptsBody">
+                <div class="empty-state">
+                    <div class="empty-state-icon">📜</div>
+                    <h3>Keine Transkripte</h3>
+                    <p>Beendete Experimente werden hier gespeichert.</p>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<!-- Transcript Detail Modal -->
+<div class="modal-overlay" id="transcriptModal">
+    <div class="modal" style="max-width:800px;max-height:80vh;overflow-y:auto">
+        <h3 id="transcriptModalTitle">Transkript</h3>
+        <div id="transcriptModalBody"></div>
+        <div class="modal-actions">
+            <button class="btn" onclick="closeModal('transcriptModal')">Schließen</button>
+        </div>
+    </div>
+</div>
+
+<script>
+// ============================================================================
+// State
+// ============================================================================
+const COLORS = ['#7c3aed', '#ef4444', '#22c55e', '#f59e0b', '#3b82f6', '#ec4899'];
+let currentScenario = null;
+let currentFilename = null;
+let currentExperimentId = null;
+let eventSource = null;
+let discoveredServices = [];  // Auto-discovered online services
+
+// Default empty scenario
+function emptyScenario() {
+    return {
+        name: "Neues Szenario",
+        description: "",
+        participants: [],
+        channels: [],
+        forbidden_words: {},
+        win_conditions: [],
+        settings: {
+            max_rounds: 100,
+            timeout_seconds: 60,
+            history_window: 8,
+            default_chat_url: "http://localhost:5001",
+            tts_url: "http://localhost:5057",
+            vroid_emotion_url: "http://localhost:5004"
+        }
+    };
+}
+
+// ============================================================================
+// Init
+// ============================================================================
+document.addEventListener('DOMContentLoaded', () => {
+    loadScenarioList();
+    discoverServices();  // Auto-discover online services
+});
+
+// ============================================================================
+// Service Discovery
+// ============================================================================
+async function discoverServices() {
+    const statusEl = document.getElementById('discoveryStatus');
+    if (statusEl) statusEl.textContent = '⏳ Suche Services...';
+    try {
+        const resp = await fetch('/api/discover-services');
+        const data = await resp.json();
+        discoveredServices = data.services || [];
+        console.log(`[Discovery] ${discoveredServices.length} Services gefunden`);
+        const chatServices = discoveredServices.filter(s => ['ki_chat','main_server'].includes(s.service_id));
+        if (statusEl) statusEl.textContent = `🟢 ${discoveredServices.length} Services online (${chatServices.length} Chat)`;
+        // Re-render participants if scenario is loaded to update dropdowns
+        if (currentScenario) {
+            collectParticipants();
+            renderParticipants();
+        }
+    } catch (e) {
+        console.warn('[Discovery] Fehler:', e);
+        discoveredServices = [];
+        if (statusEl) statusEl.textContent = '🔴 Discovery fehlgeschlagen';
+    }
+}
+
+function buildServiceDropdownOptions(currentUrl, serviceFilter) {
+    // serviceFilter: 'chat' | 'tts' | 'vroid_emotion' | 'all'
+    const filterMap = {
+        'chat': ['ki_chat', 'main_server'],
+        'tts': ['text_to_speech'],
+        'vroid_emotion': ['vroid_emotion'],
+        'all': null
+    };
+    const allowedIds = filterMap[serviceFilter] || null;
+
+    let options = '<option value="">-- Manuell eingeben --</option>';
+    discoveredServices.forEach(svc => {
+        if (allowedIds && !allowedIds.includes(svc.service_id)) return;
+        const selected = svc.url === currentUrl ? 'selected' : '';
+        const label = `${svc.service_name} (${svc.instance}) - :${svc.port}`;
+        const statusIcon = svc.status === 'online' ? '🟢' : '🔴';
+        options += `<option value="${svc.url}" ${selected}>${statusIcon} ${label}</option>`;
+    });
+    // If currentUrl is set but not in discovered list, add it as custom option
+    if (currentUrl && !discoveredServices.find(s => s.url === currentUrl)) {
+        options += `<option value="${currentUrl}" selected>📌 ${currentUrl} (manuell)</option>`;
+    }
+    return options;
+}
+
+function onServiceSelect(selectEl, participantIdx) {
+    const card = selectEl.closest('.participant-card');
+    const urlInput = card.querySelector('.p-url');
+    if (selectEl.value) {
+        urlInput.value = selectEl.value;
+        urlInput.style.display = 'none';
+    } else {
+        urlInput.style.display = '';
+        urlInput.focus();
+    }
+    // Refresh character list for this participant's new chat_url
+    const charSelect = card.querySelector('.p-character');
+    if (charSelect) {
+        const chatUrl = card.querySelector('.p-url').value.trim();
+        fetchCharacters(chatUrl, charSelect);
+    }
+}
+
+/* ---------- Character Dropdown ---------- */
+async function fetchCharacters(chatUrl, selectEl, currentChar) {
+    if (!chatUrl) return;
+    try {
+        const resp = await fetch(`/api/characters?chat_url=${encodeURIComponent(chatUrl)}`);
+        if (!resp.ok) throw new Error('fetch failed');
+        const data = await resp.json();
+        const chars = data.characters || [];
+        const prev = currentChar || selectEl.value || '';
+        selectEl.innerHTML = '<option value="">(Standard – kein Wechsel)</option>';
+        chars.forEach(c => {
+            const opt = document.createElement('option');
+            opt.value = c;
+            opt.textContent = c;
+            if (c === prev) opt.selected = true;
+            selectEl.appendChild(opt);
+        });
+    } catch (e) {
+        console.warn('Character-Liste konnte nicht geladen werden:', e);
+        selectEl.innerHTML = '<option value="">(nicht verfügbar)</option>';
+        if (currentChar) {
+            const opt = document.createElement('option');
+            opt.value = currentChar;
+            opt.textContent = currentChar;
+            opt.selected = true;
+            selectEl.appendChild(opt);
+        }
+    }
+}
+
+// ============================================================================
+// View Switching
+// ============================================================================
+function switchView(view) {
+    document.querySelectorAll('.view').forEach(v => v.style.display = 'none');
+    document.getElementById(`view-${view}`).style.display = '';
+    document.querySelectorAll('.nav-item[data-view]').forEach(n => n.classList.remove('active'));
+    document.querySelector(`.nav-item[data-view="${view}"]`).classList.add('active');
+
+    if (view === 'transcripts') loadTranscripts();
+}
+
+function switchTab(el) {
+    const tabId = el.dataset.tab;
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+    el.classList.add('active');
+    document.getElementById(tabId).classList.add('active');
+}
+
+// ============================================================================
+// Scenario List
+// ============================================================================
+async function loadScenarioList() {
+    const resp = await fetch('/api/scenarios');
+    const data = await resp.json();
+    const list = document.getElementById('scenarioList');
+    list.innerHTML = '';
+
+    data.scenarios.forEach(s => {
+        const el = document.createElement('div');
+        el.className = `scenario-item${currentFilename === s.filename ? ' active' : ''}`;
+        el.innerHTML = `
+            <span onclick="loadScenarioByName('${s.filename}')">${s.name}</span>
+            <button class="delete-btn" onclick="event.stopPropagation(); deleteScenario('${s.filename}')">✕</button>
+        `;
+        list.appendChild(el);
+    });
+}
+
+async function loadScenarioByName(filename) {
+    const resp = await fetch(`/api/scenarios/${filename}`);
+    if (!resp.ok) return;
+    currentScenario = await resp.json();
+    currentFilename = filename;
+    renderScenario();
+    loadScenarioList();
+}
+
+function createNewScenario() {
+    currentScenario = emptyScenario();
+    currentFilename = null;
+    renderScenario();
+}
+
+async function deleteScenario(filename) {
+    if (!confirm(`Szenario "${filename}" wirklich löschen?`)) return;
+    await fetch(`/api/scenarios/${filename}`, { method: 'DELETE' });
+    if (currentFilename === filename) {
+        currentScenario = null;
+        currentFilename = null;
+    }
+    loadScenarioList();
+}
+
+async function saveCurrentScenario() {
+    if (!currentScenario) return;
+    collectFormData();
+
+    if (!currentFilename) {
+        const name = currentScenario.name || 'neues_szenario';
+        const resp = await fetch('/api/scenarios', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(currentScenario)
+        });
+        const data = await resp.json();
+        currentFilename = data.filename;
+    } else {
+        await fetch(`/api/scenarios/${currentFilename}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(currentScenario)
+        });
+    }
+    loadScenarioList();
+}
+
+// ============================================================================
+// Render Scenario into Editor
+// ============================================================================
+function renderScenario() {
+    if (!currentScenario) return;
+    const s = currentScenario;
+
+    document.getElementById('editorTitle').textContent = s.name || 'Szenario Editor';
+    document.getElementById('scenarioName').value = s.name || '';
+    document.getElementById('scenarioDescription').value = s.description || '';
+    document.getElementById('settingsMaxRounds').value = s.settings?.max_rounds || 100;
+    document.getElementById('settingsTimeout').value = s.settings?.timeout_seconds || 60;
+    document.getElementById('settingsHistoryWindow').value = s.settings?.history_window || 8;
+    document.getElementById('settingsDefaultUrl').value = s.settings?.default_chat_url || 'http://localhost:5001';
+    document.getElementById('settingsTtsUrl').value = s.settings?.tts_url || 'http://localhost:5057';
+    document.getElementById('settingsVroidUrl').value = s.settings?.vroid_emotion_url || 'http://localhost:5004';
+    document.getElementById('settingsDirectDialog').checked = s.settings?.direct_dialog || false;
+
+    renderParticipants();
+    renderChannels();
+    renderForbiddenWords();
+    renderWinConditions();
+}
+
+// ============================================================================
+// Participants
+// ============================================================================
+function renderParticipants() {
+    const container = document.getElementById('participantsList');
+    container.innerHTML = '';
+    const participants = currentScenario.participants || [];
+
+    participants.forEach((p, idx) => {
+        const color = COLORS[idx % COLORS.length];
+        const html = `
+        <div class="participant-card" data-idx="${idx}">
+            <div class="card-header">
+                <span class="card-title">
+                    <span class="participant-color-dot" style="background:${color}"></span>
+                    Teilnehmer ${idx + 1}
+                </span>
+            </div>
+            <button class="btn btn-sm btn-danger participant-remove" onclick="removeParticipant(${idx})">✕</button>
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label">ID (eindeutig)</label>
+                    <input type="text" class="form-input p-id" value="${p.id || ''}" placeholder="z.B. gott">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Name</label>
+                    <input type="text" class="form-input p-name" value="${p.name || ''}" placeholder="z.B. Gott">
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label">Chat Service <button class="btn btn-sm" onclick="discoverServices()" style="font-size:0.7rem;padding:2px 8px;margin-left:6px" title="Services aktualisieren">🔄</button></label>
+                    <select class="form-input p-url-select" onchange="onServiceSelect(this, ${idx})">
+                        ${buildServiceDropdownOptions(p.chat_url || 'http://localhost:5001', 'chat')}
+                    </select>
+                    <input type="text" class="form-input p-url" value="${p.chat_url || 'http://localhost:5001'}" placeholder="http://localhost:5001" style="margin-top:4px;${p.chat_url && discoveredServices.find(s => s.url === p.chat_url) ? 'display:none' : ''}">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Chat Endpoint</label>
+                    <input type="text" class="form-input p-endpoint" value="${p.chat_endpoint || '/chat-free'}" placeholder="/chat-free">
+                </div>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Rolle / System Prompt</label>
+                <textarea class="form-textarea p-system" rows="4" placeholder="Beschreibe die Rolle dieser KI...">${p.system_prompt || ''}</textarea>
+            </div>
+            <div class="card" style="margin-top:12px;margin-bottom:0;padding:14px;background:var(--bg-input)">
+                <div class="card-title" style="font-size:0.85rem;margin-bottom:10px">🔧 Features pro Teilnehmer</div>
+                <div class="checkbox-group">
+                    <label class="checkbox-item">
+                        <input type="checkbox" class="p-emotion-pyramid" ${p.use_emotion_pyramid ? 'checked' : ''}>
+                        🌳 Gefühlspyramide
+                    </label>
+                    <label class="checkbox-item">
+                        <input type="checkbox" class="p-tts" ${p.enable_tts ? 'checked' : ''}>
+                        🔊 Text-to-Speech
+                    </label>
+                    <label class="checkbox-item">
+                        <input type="checkbox" class="p-vroid-emotion" ${p.enable_vroid_emotion ? 'checked' : ''}>
+                        😊 VroidEmotion
+                    </label>
+                </div>
+                <div class="form-row" style="margin-top:10px">
+                    <div class="form-group" style="margin-bottom:0">
+                        <label class="form-label">Character Name (für /chat)</label>
+                        <select class="form-input p-character" data-initial="${p.character_name || ''}">
+                            <option value="">(Standard – kein Wechsel)</option>
+                        </select>
+                    </div>
+                    <div class="form-group" style="margin-bottom:0">
+                        <label class="form-label">Chat Username</label>
+                        <input type="text" class="form-input p-username" value="${p.chat_username || ''}" placeholder="z.B. sim_deeliar">
+                    </div>
+                </div>
+                <p style="font-size:0.72rem;color:var(--text-muted);margin-top:8px">
+                    🌳 Gefühlspyramide: Nutzt /chat statt /chat-free → Memory Banks, Emotion Tree, Topic Memory aktiv.<br>
+                    🔊 TTS: Antwort wird über Text-to-Speech gesprochen.<br>
+                    😊 VroidEmotion: Setzt die Emotion am 3D-Avatar.
+                </p>
+            </div>
+        </div>`;
+        container.insertAdjacentHTML('beforeend', html);
+
+        // Populate character dropdown for this participant
+        const cards = container.querySelectorAll('.participant-card');
+        const card = cards[cards.length - 1];
+        const charSelect = card.querySelector('.p-character');
+        const chatUrl = card.querySelector('.p-url').value.trim();
+        fetchCharacters(chatUrl, charSelect, p.character_name || '');
+    });
+}
+
+function addParticipant() {
+    if (!currentScenario) return;
+    currentScenario.participants.push({
+        id: `ki_${currentScenario.participants.length + 1}`,
+        name: `KI ${currentScenario.participants.length + 1}`,
+        chat_url: "http://localhost:5001",
+        chat_endpoint: "/chat-free",
+        system_prompt: "",
+        use_emotion_pyramid: false,
+        enable_tts: false,
+        enable_vroid_emotion: false,
+        character_name: "",
+        chat_username: ""
+    });
+    renderParticipants();
+}
+
+function removeParticipant(idx) {
+    if (!currentScenario) return;
+    collectParticipants();
+    currentScenario.participants.splice(idx, 1);
+    renderParticipants();
+    renderChannels();
+    renderForbiddenWords();
+}
+
+function collectParticipants() {
+    const cards = document.querySelectorAll('.participant-card');
+    const oldParticipants = currentScenario.participants || [];
+    const participants = [];
+    cards.forEach((card, i) => {
+        participants.push({
+            id: card.querySelector('.p-id').value.trim(),
+            name: card.querySelector('.p-name').value.trim(),
+            chat_url: card.querySelector('.p-url').value.trim(),
+            chat_endpoint: card.querySelector('.p-endpoint').value.trim(),
+            system_prompt: card.querySelector('.p-system').value.trim(),
+            use_emotion_pyramid: card.querySelector('.p-emotion-pyramid').checked,
+            enable_tts: card.querySelector('.p-tts').checked,
+            enable_vroid_emotion: card.querySelector('.p-vroid-emotion').checked,
+            character_name: card.querySelector('.p-character').value.trim(),
+            chat_username: card.querySelector('.p-username').value.trim()
+        });
+    });
+
+    // Update channel references if participant IDs changed
+    const idMap = {};
+    oldParticipants.forEach((op, i) => {
+        if (i < participants.length && op.id !== participants[i].id) {
+            idMap[op.id] = participants[i].id;
+        }
+    });
+    if (Object.keys(idMap).length > 0 && currentScenario.channels) {
+        currentScenario.channels.forEach(ch => {
+            if (idMap[ch.from]) ch.from = idMap[ch.from];
+            if (idMap[ch.to]) ch.to = idMap[ch.to];
+            if (ch.listeners) ch.listeners = ch.listeners.map(l => idMap[l] || l);
+            if (ch.memory_shared_with) ch.memory_shared_with = ch.memory_shared_with.map(m => idMap[m] || m);
+        });
+        // Update forbidden_words keys
+        if (currentScenario.forbidden_words) {
+            const newFw = {};
+            for (const [k, v] of Object.entries(currentScenario.forbidden_words)) {
+                newFw[idMap[k] || k] = v;
+            }
+            currentScenario.forbidden_words = newFw;
+        }
+    }
+
+    currentScenario.participants = participants;
+}
+
+// ============================================================================
+// Channels
+// ============================================================================
+function renderChannels() {
+    const container = document.getElementById('channelsList');
+    container.innerHTML = '';
+    const channels = currentScenario.channels || [];
+    const participants = currentScenario.participants || [];
+
+    const pOptions = participants.map(p => `<option value="${p.id}">${p.name} (${p.id})</option>`).join('');
+
+    channels.forEach((ch, idx) => {
+        const listenersCheckboxes = participants
+            .filter(p => p.id !== ch.from && p.id !== ch.to)
+            .map(p => `
+                <label class="checkbox-item">
+                    <input type="checkbox" class="ch-listener" value="${p.id}" 
+                        ${(ch.listeners || []).includes(p.id) ? 'checked' : ''}>
+                    ${p.name}
+                </label>
+            `).join('');
+
+        const memoryCheckboxes = participants
+            .filter(p => p.id !== ch.from)
+            .map(p => `
+                <label class="checkbox-item">
+                    <input type="checkbox" class="ch-memory" value="${p.id}" 
+                        ${(ch.memory_shared_with || []).includes(p.id) ? 'checked' : ''}>
+                    ${p.name}
+                </label>
+            `).join('');
+
+        const senderName = participants.find(p => p.id === ch.from)?.name || ch.from;
+        const receiverName = participants.find(p => p.id === ch.to)?.name || ch.to;
+
+        const html = `
+        <div class="channel-card" data-idx="${idx}">
+            <div class="card-header">
+                <span class="card-title">Kanal ${idx + 1}</span>
+                <button class="btn btn-sm btn-danger" onclick="removeChannel(${idx})">✕</button>
+            </div>
+            <div class="channel-visual">
+                <strong>${senderName}</strong>
+                <span class="channel-arrow">→</span>
+                <strong>${receiverName}</strong>
+                <span style="margin-left:auto;color:var(--text-muted)">alle ${ch.interval_seconds || 10}s</span>
+            </div>
+            <div class="form-row-3">
+                <div class="form-group">
+                    <label class="form-label">Von (Sender)</label>
+                    <select class="form-select ch-from">${pOptions}</select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">An (Empfänger)</label>
+                    <select class="form-select ch-to">${pOptions}</select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Intervall (Sek.)</label>
+                    <input type="number" class="form-input ch-interval" value="${ch.interval_seconds || 10}" min="1">
+                </div>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Start-Verzögerung (Sek.)</label>
+                <input type="number" class="form-input ch-delay" value="${ch.start_delay_seconds || 0}" min="0">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Initiale Nachricht / Anweisung</label>
+                <textarea class="form-textarea ch-initial" rows="2" placeholder="z.B. Begrüße die andere Person...">${ch.initial_message || ''}</textarea>
+            </div>
+            <div class="form-group">
+                <label class="form-label">👂 Mithörer (können den Chat mitverfolgen)</label>
+                <div class="checkbox-group">${listenersCheckboxes || '<span style="color:var(--text-muted);font-size:0.8rem">Keine weiteren Teilnehmer</span>'}</div>
+            </div>
+            <div class="form-group">
+                <label class="form-label">🧠 Erinnerung teilen mit (speichern sich diesen Verlauf)</label>
+                <div class="checkbox-group">${memoryCheckboxes || '<span style="color:var(--text-muted);font-size:0.8rem">Keine weiteren Teilnehmer</span>'}</div>
+            </div>
+        </div>`;
+        container.insertAdjacentHTML('beforeend', html);
+
+        // Set selected values (with fallback to first participant)
+        const card = container.lastElementChild;
+        const fromSelect = card.querySelector('.ch-from');
+        const toSelect = card.querySelector('.ch-to');
+        fromSelect.value = ch.from || '';
+        if (!fromSelect.value && participants.length > 0) fromSelect.value = participants[0].id;
+        toSelect.value = ch.to || '';
+        if (!toSelect.value && participants.length > 1) toSelect.value = participants[1].id;
+        else if (!toSelect.value && participants.length > 0) toSelect.value = participants[0].id;
+    });
+}
+
+function addChannel() {
+    if (!currentScenario) return;
+    collectChannels();
+    const p = currentScenario.participants;
+    currentScenario.channels.push({
+        id: `ch_${currentScenario.channels.length + 1}`,
+        from: p[0]?.id || '',
+        to: p[1]?.id || p[0]?.id || '',
+        interval_seconds: 10,
+        start_delay_seconds: 0,
+        initial_message: "",
+        listeners: [],
+        memory_shared_with: []
+    });
+    renderChannels();
+}
+
+function removeChannel(idx) {
+    if (!currentScenario) return;
+    collectChannels();
+    currentScenario.channels.splice(idx, 1);
+    renderChannels();
+}
+
+function collectChannels() {
+    const cards = document.querySelectorAll('.channel-card');
+    const channels = [];
+    cards.forEach((card, idx) => {
+        const listeners = [];
+        card.querySelectorAll('.ch-listener:checked').forEach(cb => listeners.push(cb.value));
+        const memory = [];
+        card.querySelectorAll('.ch-memory:checked').forEach(cb => memory.push(cb.value));
+
+        channels.push({
+            id: `ch_${idx + 1}`,
+            from: card.querySelector('.ch-from').value,
+            to: card.querySelector('.ch-to').value,
+            interval_seconds: parseInt(card.querySelector('.ch-interval').value) || 10,
+            start_delay_seconds: parseInt(card.querySelector('.ch-delay').value) || 0,
+            initial_message: card.querySelector('.ch-initial').value.trim(),
+            listeners: listeners,
+            memory_shared_with: memory
+        });
+    });
+    currentScenario.channels = channels;
+}
+
+// ============================================================================
+// Forbidden Words
+// ============================================================================
+function renderForbiddenWords() {
+    const container = document.getElementById('forbiddenWordsSection');
+    container.innerHTML = '';
+    const participants = currentScenario.participants || [];
+    const forbiddenWords = currentScenario.forbidden_words || {};
+
+    participants.forEach(p => {
+        const words = forbiddenWords[p.id] || [];
+        const tags = words.map((w, i) => `
+            <span class="tag tag-danger">
+                ${w}
+                <span class="tag-remove" onclick="removeForbiddenWord('${p.id}', ${i})">✕</span>
+            </span>
+        `).join('');
+
+        const html = `
+        <div class="form-group" style="margin-bottom:16px">
+            <label class="form-label">${p.name} (${p.id})</label>
+            <div class="tag-container" id="fwTags_${p.id}">${tags}</div>
+            <div style="display:flex;gap:8px;margin-top:8px">
+                <input type="text" class="form-input" id="fwInput_${p.id}" 
+                    placeholder="Verbotenes Wort eingeben..." style="flex:1"
+                    onkeydown="if(event.key==='Enter'){addForbiddenWord('${p.id}')}">
+                <button class="btn btn-sm btn-danger" onclick="addForbiddenWord('${p.id}')">＋</button>
+            </div>
+        </div>`;
+        container.insertAdjacentHTML('beforeend', html);
+    });
+}
+
+function addForbiddenWord(participantId) {
+    const input = document.getElementById(`fwInput_${participantId}`);
+    const word = input.value.trim();
+    if (!word) return;
+    if (!currentScenario.forbidden_words) currentScenario.forbidden_words = {};
+    if (!currentScenario.forbidden_words[participantId]) currentScenario.forbidden_words[participantId] = [];
+    currentScenario.forbidden_words[participantId].push(word);
+    input.value = '';
+    renderForbiddenWords();
+}
+
+function removeForbiddenWord(participantId, idx) {
+    currentScenario.forbidden_words[participantId].splice(idx, 1);
+    renderForbiddenWords();
+}
+
+// ============================================================================
+// Win Conditions
+// ============================================================================
+function renderWinConditions() {
+    const container = document.getElementById('winConditionsList');
+    container.innerHTML = '';
+    const conditions = currentScenario.win_conditions || [];
+    const participants = currentScenario.participants || [];
+    const pOptions = participants.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+
+    conditions.forEach((cond, idx) => {
+        const html = `
+        <div class="win-condition-card" data-idx="${idx}">
+            <div style="display:flex;justify-content:space-between;margin-bottom:12px">
+                <span style="font-weight:600;font-size:0.9rem">Bedingung ${idx + 1}</span>
+                <button class="btn btn-sm btn-danger" onclick="removeWinCondition(${idx})">✕</button>
+            </div>
+            <div class="form-row-3">
+                <div class="form-group">
+                    <label class="form-label">Typ</label>
+                    <select class="form-select wc-type" onchange="updateWinConditionFields(${idx})">
+                        <option value="forbidden_word_said" ${cond.type === 'forbidden_word_said' ? 'selected' : ''}>Verbotenes Wort gesagt</option>
+                        <option value="max_rounds" ${cond.type === 'max_rounds' ? 'selected' : ''}>Max. Runden erreicht</option>
+                    </select>
+                </div>
+                <div class="form-group wc-participant-group">
+                    <label class="form-label">Teilnehmer</label>
+                    <select class="form-select wc-participant">${pOptions}</select>
+                </div>
+                <div class="form-group wc-rounds-group" style="display:${cond.type === 'max_rounds' ? 'block' : 'none'}">
+                    <label class="form-label">Runden</label>
+                    <input type="number" class="form-input wc-rounds" value="${cond.rounds || 50}" min="1">
+                </div>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Ergebnis-Nachricht</label>
+                <input type="text" class="form-input wc-result" value="${cond.result || ''}" placeholder="z.B. Teufel gewinnt!">
+            </div>
+        </div>`;
+        container.insertAdjacentHTML('beforeend', html);
+
+        const card = container.lastElementChild;
+        if (cond.participant) card.querySelector('.wc-participant').value = cond.participant;
+    });
+}
+
+function addWinCondition() {
+    if (!currentScenario) return;
+    collectWinConditions();
+    currentScenario.win_conditions.push({
+        type: "forbidden_word_said",
+        participant: currentScenario.participants[0]?.id || '',
+        result: ""
+    });
+    renderWinConditions();
+}
+
+function removeWinCondition(idx) {
+    collectWinConditions();
+    currentScenario.win_conditions.splice(idx, 1);
+    renderWinConditions();
+}
+
+function updateWinConditionFields(idx) {
+    const cards = document.querySelectorAll('.win-condition-card');
+    const card = cards[idx];
+    const type = card.querySelector('.wc-type').value;
+    card.querySelector('.wc-rounds-group').style.display = type === 'max_rounds' ? 'block' : 'none';
+    card.querySelector('.wc-participant-group').style.display = type === 'forbidden_word_said' ? 'block' : 'none';
+}
+
+function collectWinConditions() {
+    const cards = document.querySelectorAll('.win-condition-card');
+    const conditions = [];
+    cards.forEach(card => {
+        const type = card.querySelector('.wc-type').value;
+        const cond = {
+            type: type,
+            result: card.querySelector('.wc-result').value.trim()
+        };
+        if (type === 'forbidden_word_said') {
+            cond.participant = card.querySelector('.wc-participant').value;
+        }
+        if (type === 'max_rounds') {
+            cond.rounds = parseInt(card.querySelector('.wc-rounds').value) || 50;
+        }
+        conditions.push(cond);
+    });
+    currentScenario.win_conditions = conditions;
+}
+
+// ============================================================================
+// Collect All Form Data
+// ============================================================================
+function collectFormData() {
+    if (!currentScenario) return;
+    currentScenario.name = document.getElementById('scenarioName').value.trim();
+    currentScenario.description = document.getElementById('scenarioDescription').value.trim();
+    currentScenario.settings = {
+        max_rounds: parseInt(document.getElementById('settingsMaxRounds').value) || 100,
+        timeout_seconds: parseInt(document.getElementById('settingsTimeout').value) || 60,
+        history_window: parseInt(document.getElementById('settingsHistoryWindow').value) || 8,
+        default_chat_url: document.getElementById('settingsDefaultUrl').value.trim(),
+        tts_url: document.getElementById('settingsTtsUrl').value.trim(),
+        vroid_emotion_url: document.getElementById('settingsVroidUrl').value.trim(),
+        direct_dialog: document.getElementById('settingsDirectDialog').checked
+    };
+    collectParticipants();
+    collectChannels();
+    collectWinConditions();
+
+    // Validate: ensure no channels have empty from/to
+    if (currentScenario.channels) {
+        for (const ch of currentScenario.channels) {
+            if (!ch.from || !ch.to) {
+                const pIds = (currentScenario.participants || []).map(p => p.id);
+                if (!ch.from && pIds.length > 0) ch.from = pIds[0];
+                if (!ch.to && pIds.length > 1) ch.to = pIds[1];
+                else if (!ch.to && pIds.length > 0) ch.to = pIds[0];
+            }
+        }
+    }
+}
+
+// ============================================================================
+// Experiment Control
+// ============================================================================
+async function startExperiment() {
+    if (!currentScenario) return alert('Kein Szenario geladen!');
+    await saveCurrentScenario();
+
+    // Check if any participants have valid chat URLs
+    const participants = currentScenario.participants || [];
+    if (participants.length === 0) return alert('Keine Teilnehmer definiert!');
+    const channels = currentScenario.channels || [];
+    if (channels.length === 0) return alert('Keine Kommunikationskanäle definiert!');
+
+    const resp = await fetch('/api/experiment/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scenario: currentFilename })
+    });
+    const data = await resp.json();
+    if (data.error) return alert(data.error);
+
+    currentExperimentId = data.experiment_id;
+    switchView('experiments');
+    startEventStream(currentExperimentId);
+}
+
+function startEventStream(expId) {
+    if (eventSource) eventSource.close();
+
+    const log = document.getElementById('experimentLog');
+    log.innerHTML = '';
+    document.getElementById('experimentControls').style.display = 'flex';
+    updateExperimentStatus('running');
+
+    eventSource = new EventSource(`/api/experiment/${expId}/stream`);
+    eventSource.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        if (data.type === 'heartbeat') return;
+        if (data.type === 'done') {
+            eventSource.close();
+            return;
+        }
+        appendLogEntry(data);
+        updateStats();
+    };
+    eventSource.onerror = () => {
+        eventSource.close();
+    };
+}
+
+function appendLogEntry(data) {
+    const log = document.getElementById('experimentLog');
+    const entry = document.createElement('div');
+    entry.className = `log-entry ${data.type || ''}`;
+
+    const time = data.timestamp ? new Date(data.timestamp).toLocaleTimeString('de-DE') : '';
+
+    if (data.type === 'message' || data.type === 'forbidden_word') {
+        entry.innerHTML = `
+            <span class="log-time">${time}</span>
+            <span class="log-sender" style="color:${getParticipantColor(data.sender)}">${data.sender}</span>
+            <span class="log-arrow">→</span>
+            <span class="log-receiver">${data.receiver}</span>
+            <span class="log-text">${data.text}</span>
+            <span class="log-emotion">${data.emotion || ''}</span>
+            ${data.forbidden_word ? `<span class="tag tag-danger">⚠ "${data.forbidden_word}"</span>` : ''}
+        `;
+    } else if (data.type === 'system' || data.type === 'alert' || data.type === 'win') {
+        entry.innerHTML = `
+            <span class="log-time">${time}</span>
+            <span class="log-text">${data.text}</span>
+        `;
+        if (data.type === 'win') updateExperimentStatus('finished');
+    } else if (data.type === 'sending') {
+        entry.innerHTML = `
+            <span class="log-time">${time}</span>
+            <span class="log-text" style="color:var(--text-muted);font-style:italic">
+                ⏳ ${data.sender} antwortet ${data.receiver}...
+            </span>
+        `;
+        entry.id = `sending-${data.channel}`;
+    } else if (data.type === 'tts') {
+        entry.innerHTML = `
+            <span class="log-time">${time}</span>
+            <span class="log-text" style="color:var(--info);font-size:0.8rem">${data.text}</span>
+        `;
+        entry.style.background = 'var(--info-bg)';
+        entry.style.borderColor = 'var(--info)';
+    } else if (data.type === 'emotion_set') {
+        entry.innerHTML = `
+            <span class="log-time">${time}</span>
+            <span class="log-text" style="color:var(--accent-light);font-size:0.8rem">${data.text}</span>
+        `;
+        entry.style.background = 'var(--accent-bg)';
+        entry.style.borderColor = 'var(--accent)';
+    } else if (data.type === 'error') {
+        entry.innerHTML = `
+            <span class="log-time">${time}</span>
+            <span class="log-text" style="color:var(--danger)">❌ ${data.text}</span>
+        `;
+        entry.style.background = 'var(--danger-bg)';
+    } else if (data.type === 'auto_stopped') {
+        entry.innerHTML = `
+            <span class="log-time">${time}</span>
+            <span class="log-text" style="color:var(--danger);font-weight:bold">🛑 ${data.text}</span>
+        `;
+        entry.style.background = 'var(--danger-bg)';
+        entry.style.borderColor = 'var(--danger)';
+        updateExperimentStatus('stopped');
+    } else if (data.type === 'health_check') {
+        const ok = data.text.includes('✓') || data.text.includes('OK');
+        entry.innerHTML = `
+            <span class="log-time">${time}</span>
+            <span class="log-text" style="color:${ok ? 'var(--success)' : 'var(--danger)'}">${data.text}</span>
+        `;
+    }
+
+    log.appendChild(entry);
+    log.scrollTop = log.scrollHeight;
+
+    // Remove "sending" indicator when message arrives
+    if (data.type === 'message' || data.type === 'forbidden_word') {
+        const sending = document.getElementById(`sending-${data.channel}`);
+        if (sending) sending.remove();
+    }
+}
+
+function getParticipantColor(name) {
+    if (!currentScenario) return COLORS[0];
+    const idx = currentScenario.participants.findIndex(p => p.name === name);
+    return COLORS[idx >= 0 ? idx % COLORS.length : 0];
+}
+
+async function updateStats() {
+    if (!currentExperimentId) return;
+    try {
+        const resp = await fetch(`/api/experiment/${currentExperimentId}/status`);
+        const data = await resp.json();
+        document.getElementById('statRounds').textContent = data.round_count || 0;
+        document.getElementById('statMessages').textContent = data.message_count || 0;
+        if (data.status === 'finished' || data.status === 'stopped') {
+            updateExperimentStatus(data.status);
+        }
+    } catch (e) {}
+}
+
+function updateExperimentStatus(status) {
+    const statusEl = document.getElementById('experimentStatus');
+    const textEl = document.getElementById('experimentStatusText');
+    statusEl.className = `experiment-status status-${status}`;
+    const labels = { running: 'Läuft', paused: 'Pausiert', stopped: 'Gestoppt', finished: 'Beendet' };
+    textEl.textContent = labels[status] || status;
+
+    document.getElementById('btnPause').style.display = status === 'running' ? '' : 'none';
+    document.getElementById('btnResume').style.display = status === 'paused' ? '' : 'none';
+}
+
+async function pauseExperiment() {
+    if (!currentExperimentId) return;
+    await fetch(`/api/experiment/${currentExperimentId}/pause`, { method: 'POST' });
+    updateExperimentStatus('paused');
+}
+
+async function resumeExperiment() {
+    if (!currentExperimentId) return;
+    await fetch(`/api/experiment/${currentExperimentId}/resume`, { method: 'POST' });
+    updateExperimentStatus('running');
+}
+
+async function stopExperiment() {
+    if (!currentExperimentId) return;
+    await fetch(`/api/experiment/${currentExperimentId}/stop`, { method: 'POST' });
+    updateExperimentStatus('stopped');
+    if (eventSource) eventSource.close();
+}
+
+async function stopAllExperiments() {
+    await fetch('/api/experiment/stop-all', { method: 'POST' });
+    updateExperimentStatus('stopped');
+    if (eventSource) eventSource.close();
+}
+
+// ============================================================================
+// Transcripts
+// ============================================================================
+async function loadTranscripts() {
+    const resp = await fetch('/api/transcripts');
+    const data = await resp.json();
+    const container = document.getElementById('transcriptsBody');
+
+    if (!data.transcripts?.length) {
+        container.innerHTML = `<div class="empty-state"><div class="empty-state-icon">📜</div><h3>Keine Transkripte</h3></div>`;
+        return;
+    }
+
+    container.innerHTML = '';
+    data.transcripts.forEach(t => {
+        const statusTag = {
+            'finished': '<span class="tag tag-success">Beendet</span>',
+            'stopped': '<span class="tag tag-danger">Gestoppt</span>'
+        }[t.status] || `<span class="tag">${t.status}</span>`;
+
+        const html = `
+        <div class="transcript-item" onclick="viewTranscript('${t.filename}')">
+            <div class="transcript-info">
+                <span class="transcript-name">${t.scenario_name || t.filename}</span>
+                <span class="transcript-meta">
+                    ${t.started_at ? new Date(t.started_at).toLocaleString('de-DE') : '?'}
+                    · ${t.total_rounds} Runden
+                    ${t.win_result ? ` · 🏆 ${t.win_result}` : ''}
+                </span>
+            </div>
+            ${statusTag}
+        </div>`;
+        container.insertAdjacentHTML('beforeend', html);
+    });
+}
+
+async function viewTranscript(filename) {
+    const resp = await fetch(`/api/transcripts/${filename}`);
+    const data = await resp.json();
+
+    document.getElementById('transcriptModalTitle').textContent = data.scenario_name || filename;
+
+    const body = document.getElementById('transcriptModalBody');
+    let html = `<div style="margin-bottom:16px;color:var(--text-secondary);font-size:0.85rem">
+        Status: ${data.status} · Runden: ${data.total_rounds}
+        ${data.win_result ? ` · 🏆 ${data.win_result}` : ''}
+    </div>`;
+
+    (data.messages || []).forEach(m => {
+        const color = getParticipantColorFromScenario(m.sender, data.scenario);
+        html += `
+        <div class="log-entry ${m.forbidden_word_detected ? 'forbidden_word' : ''}" style="margin-bottom:6px">
+            <span class="log-sender" style="color:${color}">${m.sender}</span>
+            <span class="log-arrow">→</span>
+            <span class="log-receiver">${m.receiver}</span>
+            <span class="log-text">${m.text}</span>
+            ${m.forbidden_word_detected ? `<span class="tag tag-danger">⚠ "${m.forbidden_word_detected}"</span>` : ''}
+        </div>`;
+    });
+
+    body.innerHTML = html;
+    document.getElementById('transcriptModal').classList.add('active');
+}
+
+function getParticipantColorFromScenario(name, scenario) {
+    if (!scenario?.participants) return COLORS[0];
+    const idx = scenario.participants.findIndex(p => p.name === name);
+    return COLORS[idx >= 0 ? idx % COLORS.length : 0];
+}
+
+function closeModal(id) {
+    document.getElementById(id).classList.remove('active');
+}
+
+// Close modal on overlay click
+document.querySelectorAll('.modal-overlay').forEach(el => {
+    el.addEventListener('click', (e) => {
+        if (e.target === el) el.classList.remove('active');
+    });
+});
+</script>
+</body>
+</html>

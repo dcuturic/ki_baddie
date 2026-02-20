@@ -6,6 +6,8 @@ Manages multiple services (Python apps, PowerShell scripts) across different ins
 
 import json
 import os
+import sys
+import io
 import subprocess
 import psutil
 import threading
@@ -17,11 +19,25 @@ import shlex
 import shutil
 import urllib.request
 import urllib.error
+import urllib.parse
 from pathlib import Path
 from dataclasses import dataclass, asdict
 from datetime import datetime
 from typing import Dict, List, Optional, Any
 from collections import deque
+
+# ===== Bulletproof Windows UTF-8 fix (ä, ö, ü, ß etc.) =====
+os.environ["PYTHONIOENCODING"] = "utf-8"
+os.environ["PYTHONUTF8"] = "1"
+try:
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+except Exception:
+    try:
+        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+        sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+    except Exception:
+        pass
 
 from flask import Flask, render_template, request, jsonify, send_from_directory
 
@@ -31,6 +47,7 @@ from flask import Flask, render_template, request, jsonify, send_from_directory
 
 app = Flask(__name__, template_folder='templates', static_folder='static')
 app.config['JSON_SORT_KEYS'] = False
+app.json.ensure_ascii = False
 
 # Logging configuration
 logging.basicConfig(
@@ -44,6 +61,7 @@ PROJECT_ROOT = MANAGER_ROOT.parent
 INSTANCES_DIR = MANAGER_ROOT / 'instances'
 INSTANCE_SERVICE_CONFIGS_DIR = MANAGER_ROOT / 'instance_service_configs'
 CONFIG_FILE = MANAGER_ROOT / 'config.json'
+RUNNING_PIDS_FILE = MANAGER_ROOT / 'running_pids.json'
 
 # ============================================================================
 # Data Classes
@@ -106,7 +124,8 @@ class ProcessManager:
     """Manages lifecycle of multiple service processes."""
     
     def __init__(self):
-        self.processes: Dict[str, ServiceProcess] = {}
+        # Per-instance process tracking: { instance_name: { service_id: ServiceProcess } }
+        self._all_processes: Dict[str, Dict[str, ServiceProcess]] = {}
         self.config: Dict = self._load_config()
         self.current_instance: str = "default"
         self.lock = threading.Lock()
@@ -123,8 +142,70 @@ class ProcessManager:
         except Exception:
             pass
         
+        # Restore persisted PID-to-instance mapping from disk
+        self._restore_running_pids()
+        
         self._start_monitor()
     
+    def _get_instance_processes(self, instance: str = None) -> Dict[str, ServiceProcess]:
+        """Get the processes dict for a specific instance (creates if missing)."""
+        inst = instance or self.current_instance
+        if inst not in self._all_processes:
+            self._all_processes[inst] = {}
+        return self._all_processes[inst]
+
+    @property
+    def processes(self) -> Dict[str, ServiceProcess]:
+        """Backward-compatible: returns processes for the current instance."""
+        return self._get_instance_processes(self.current_instance)
+
+    def _save_running_pids(self):
+        """Persist instance→service→PID mapping to disk so we know who owns what after restart."""
+        try:
+            data: Dict[str, Dict[str, int]] = {}
+            for inst_name, inst_procs in self._all_processes.items():
+                for service_id, sp in inst_procs.items():
+                    if sp.pid and sp.status == 'running':
+                        data.setdefault(inst_name, {})[service_id] = sp.pid
+            with open(RUNNING_PIDS_FILE, 'w', encoding='utf-8') as f:
+                json.dump(data, f, indent=2)
+        except Exception as e:
+            logger.warning(f"Failed to persist running PIDs: {e}")
+
+    def _restore_running_pids(self):
+        """Restore instance→service→PID mapping from disk after manager restart."""
+        if not RUNNING_PIDS_FILE.exists():
+            return
+        try:
+            with open(RUNNING_PIDS_FILE, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            for inst_name, services in data.items():
+                for service_id, pid in services.items():
+                    # Only restore if the process is actually still alive
+                    if not psutil.pid_exists(pid):
+                        continue
+                    service_config = self.config.get('services', {}).get(service_id)
+                    if not service_config:
+                        continue
+                    inst_procs = self._get_instance_processes(inst_name)
+                    sp = ServiceProcess(
+                        service_id=service_id,
+                        service_name=service_config.get('name', service_id),
+                        pid=pid,
+                        status='running'
+                    )
+                    try:
+                        proc = psutil.Process(pid)
+                        sp.start_time = datetime.fromtimestamp(proc.create_time()).isoformat()
+                    except Exception:
+                        sp.start_time = datetime.now().isoformat()
+                    inst_procs[service_id] = sp
+                    logger.info(f"Restored PID {pid} for '{service_id}' (instance='{inst_name}')")
+            # Clean stale entries from disk
+            self._save_running_pids()
+        except Exception as e:
+            logger.warning(f"Failed to restore running PIDs: {e}")
+
     def _load_config(self) -> Dict:
         """Load configuration from config.json."""
         try:
@@ -523,11 +604,12 @@ class ProcessManager:
         
         try:
             with self.lock:
-                if service_id in self.processes and self.is_running(service_id):
+                inst_processes = self._get_instance_processes(instance)
+                if service_id in inst_processes and self.is_running(service_id, instance):
                     if not force:
                         return {'success': False, 'error': 'Service already running'}
                     # Force mode: stop own tracked process first
-                    service_process = self.processes.get(service_id)
+                    service_process = inst_processes.get(service_id)
                     if service_process and service_process.process:
                         try:
                             service_process.process.terminate()
@@ -563,6 +645,23 @@ class ProcessManager:
                         'success': False,
                         'error': f"Failed to apply instance config for '{service_id}' in instance '{instance}'"
                     }
+
+                # Check if another instance already owns a process on the same port
+                if not force:
+                    target_port = self._resolve_service_port(service_config, raw_path)
+                    if target_port:
+                        existing_pid = self._find_listening_pid_on_port(target_port)
+                        if existing_pid:
+                            # Check which instance owns it
+                            for other_inst, other_procs in self._all_processes.items():
+                                if other_inst == instance:
+                                    continue
+                                for sid, sp in other_procs.items():
+                                    if sp.pid == existing_pid and sp.status == 'running':
+                                        return {
+                                            'success': False,
+                                            'error': f"Port {target_port} wird bereits von Instanz '{other_inst}' (Service '{sid}') benutzt. Stoppe zuerst den Service dort oder verwende 'Force Start'."
+                                        }
 
                 force_port_result = None
                 if force:
@@ -633,7 +732,8 @@ class ProcessManager:
                         cwd=str(work_dir),
                         stdout=subprocess.PIPE,
                         stderr=subprocess.STDOUT,
-                        universal_newlines=True,
+                        encoding='utf-8',
+                        errors='replace',
                         bufsize=1
                     )
 
@@ -657,14 +757,14 @@ class ProcessManager:
                             'error': f'Service exited immediately{error_suffix}'
                         }
                     
-                    service_process = self.processes.get(service_id)
+                    service_process = inst_processes.get(service_id)
                     if not service_process:
                         service_name = service_config.get('name', service_id)
                         service_process = ServiceProcess(
                             service_id=service_id,
                             service_name=service_name
                         )
-                        self.processes[service_id] = service_process
+                        inst_processes[service_id] = service_process
                     
                     service_process.process = process
                     service_process.pid = process.pid
@@ -674,12 +774,13 @@ class ProcessManager:
                     # Start log reader thread
                     log_thread = threading.Thread(
                         target=self._read_logs,
-                        args=(service_id, process),
+                        args=(service_id, process, instance),
                         daemon=True
                     )
                     log_thread.start()
                     
-                    logger.info(f"Started service '{service_id}' (PID: {process.pid})")
+                    logger.info(f"Started service '{service_id}' (PID: {process.pid}) [instance={instance}]")
+                    self._save_running_pids()
                     response = {
                         'success': True,
                         'service_id': service_id,
@@ -704,15 +805,17 @@ class ProcessManager:
             logger.error(f"Error starting service '{service_id}': {e}\n{traceback.format_exc()}")
             return {'success': False, 'error': str(e)}
     
-    def stop_service(self, service_id: str) -> Dict:
+    def stop_service(self, service_id: str, instance: str = None) -> Dict:
         """Stop a running service."""
+        instance = instance or self.current_instance
         try:
             with self.lock:
-                service_process = self.processes.get(service_id)
+                inst_processes = self._get_instance_processes(instance)
+                service_process = inst_processes.get(service_id)
                 if not service_process:
                     return {'success': False, 'error': 'Service not found'}
                 
-                if not self.is_running(service_id):
+                if not self.is_running(service_id, instance):
                     service_process.status = 'stopped'
                     service_process.pid = None
                     return {'success': True, 'message': 'Service already stopped'}
@@ -778,9 +881,10 @@ class ProcessManager:
                 service_process.status = 'stopped'
                 service_process.pid = None
                 service_process.process = None
+                self._save_running_pids()
                 
                 if killed:
-                    logger.info(f"Stopped service '{service_id}'")
+                    logger.info(f"Stopped service '{service_id}' [instance={instance}]")
                     return {'success': True, 'service_id': service_id}
                 else:
                     logger.warning(f"Could not confirm stop for '{service_id}'")
@@ -796,7 +900,7 @@ class ProcessManager:
         
         try:
             # Stop the service
-            stop_result = self.stop_service(service_id)
+            stop_result = self.stop_service(service_id, instance)
             if not stop_result.get('success'):
                 return stop_result
             
@@ -809,9 +913,20 @@ class ProcessManager:
             logger.error(f"Error restarting service '{service_id}': {e}")
             return {'success': False, 'error': str(e)}
     
-    def is_running(self, service_id: str) -> bool:
+    def _is_pid_owned_by_other_instance(self, pid: int, current_instance: str) -> bool:
+        """Check if a PID is already tracked by a different instance."""
+        for inst_name, inst_procs in self._all_processes.items():
+            if inst_name == current_instance:
+                continue
+            for sp in inst_procs.values():
+                if sp.pid == pid and sp.status == 'running':
+                    return True
+        return False
+
+    def is_running(self, service_id: str, instance: str = None) -> bool:
         """Check if a service is running."""
-        service_process = self.processes.get(service_id)
+        inst_processes = self._get_instance_processes(instance)
+        service_process = inst_processes.get(service_id)
         if not service_process:
             return False
 
@@ -829,9 +944,11 @@ class ProcessManager:
 
         return False
     
-    def get_status(self, service_id: str) -> Dict:
+    def get_status(self, service_id: str, instance: str = None) -> Dict:
         """Get status of a service."""
-        service_process = self.processes.get(service_id)
+        instance = instance or self.current_instance
+        inst_processes = self._get_instance_processes(instance)
+        service_process = inst_processes.get(service_id)
         if not service_process:
             # Initialize service process if not exists
             service_config = self.config.get('services', {}).get(service_id)
@@ -841,7 +958,7 @@ class ProcessManager:
                     service_name=service_config.get('name', service_id),
                     status='stopped'
                 )
-                self.processes[service_id] = service_process
+                inst_processes[service_id] = service_process
             else:
                 return {'success': False, 'error': 'Service not found'}
 
@@ -851,19 +968,40 @@ class ProcessManager:
             service_path = service_config.get('path', '')
             if service_path:
                 raw_path = self._resolve_service_raw_path(service_path)
-                discovered_port = self._resolve_service_port(service_config, raw_path)
+                # Use per-instance config for port discovery
+                inst_config = load_preview_config_for_instance_service(instance, service_id)
+                discovered_port = extract_port_from_runtime_config(inst_config) if inst_config else None
+                if not discovered_port:
+                    discovered_port = self._resolve_service_port(service_config, raw_path)
                 if discovered_port:
-                    discovered_pid = self._find_listening_pid_on_port(discovered_port)
-                    if discovered_pid:
-                        service_process.pid = discovered_pid
-                        service_process.status = 'running'
-                        if not service_process.start_time:
-                            try:
-                                proc = psutil.Process(discovered_pid)
-                                started = datetime.fromtimestamp(proc.create_time())
-                                service_process.start_time = started.isoformat()
-                            except Exception:
-                                service_process.start_time = datetime.now().isoformat()
+                    # Check if another instance uses the SAME port for this service
+                    # If so, port discovery is ambiguous → skip auto-claim
+                    port_is_ambiguous = False
+                    for other_inst in (load_instances() or []):
+                        other_name = other_inst.get('filename')
+                        if not other_name or other_name == instance:
+                            continue
+                        other_svc = (other_inst.get('services') or {}).get(service_id)
+                        if not other_svc or not other_svc.get('enabled', False):
+                            continue
+                        other_cfg = load_preview_config_for_instance_service(other_name, service_id)
+                        other_port = extract_port_from_runtime_config(other_cfg) if other_cfg else None
+                        if other_port == discovered_port:
+                            port_is_ambiguous = True
+                            break
+                    
+                    if not port_is_ambiguous:
+                        discovered_pid = self._find_listening_pid_on_port(discovered_port)
+                        if discovered_pid and not self._is_pid_owned_by_other_instance(discovered_pid, instance):
+                            service_process.pid = discovered_pid
+                            service_process.status = 'running'
+                            if not service_process.start_time:
+                                try:
+                                    proc = psutil.Process(discovered_pid)
+                                    started = datetime.fromtimestamp(proc.create_time())
+                                    service_process.start_time = started.isoformat()
+                                except Exception:
+                                    service_process.start_time = datetime.now().isoformat()
         
         # Update status
         if service_process.process:
@@ -888,9 +1026,10 @@ class ProcessManager:
             'service': service_payload
         }
     
-    def get_logs(self, service_id: str, lines: int = 100) -> Dict:
+    def get_logs(self, service_id: str, lines: int = 100, instance: str = None) -> Dict:
         """Get recent logs for a service."""
-        service_process = self.processes.get(service_id)
+        inst_processes = self._get_instance_processes(instance)
+        service_process = inst_processes.get(service_id)
         if not service_process:
             return {'success': False, 'error': 'Service not found'}
         
@@ -902,9 +1041,10 @@ class ProcessManager:
             'logs': '\n'.join(logs)
         }
     
-    def _read_logs(self, service_id: str, process: subprocess.Popen):
+    def _read_logs(self, service_id: str, process: subprocess.Popen, instance: str = None):
         """Read logs from a service process."""
-        service_process = self.processes.get(service_id)
+        inst_processes = self._get_instance_processes(instance)
+        service_process = inst_processes.get(service_id)
         if not service_process:
             return
         
@@ -922,18 +1062,20 @@ class ProcessManager:
             logger.error(f"Error reading logs for '{service_id}': {e}")
     
     def stop_all(self):
-        """Stop all running services."""
+        """Stop all running services across all instances."""
         with self.lock:
-            for service_id in list(self.processes.keys()):
-                if self.is_running(service_id):
-                    logger.info(f"Stopping service '{service_id}'...")
-                    self.stop_service(service_id)
+            for inst_name, inst_processes in list(self._all_processes.items()):
+                for service_id in list(inst_processes.keys()):
+                    if self.is_running(service_id, inst_name):
+                        logger.info(f"Stopping service '{service_id}' (instance={inst_name})...")
+                        self.stop_service(service_id, inst_name)
     
-    def get_all_statuses(self) -> Dict:
-        """Get status of all services."""
+    def get_all_statuses(self, instance: str = None) -> Dict:
+        """Get status of all services for a specific instance."""
+        instance = instance or self.current_instance
         statuses = {}
         for service_id in self.config.get('services', {}).keys():
-            status_result = self.get_status(service_id)
+            status_result = self.get_status(service_id, instance)
             if status_result.get('success'):
                 statuses[service_id] = status_result['service']
         return statuses
@@ -949,12 +1091,13 @@ class ProcessManager:
         while not self.should_exit:
             try:
                 with self.lock:
-                    for service_id, service_process in self.processes.items():
-                        if service_process.process:
-                            if service_process.process.poll() is not None:
-                                service_process.status = 'stopped'
-                                service_process.pid = None
-                                service_process.process = None
+                    for inst_name, inst_processes in self._all_processes.items():
+                        for service_id, service_process in inst_processes.items():
+                            if service_process.process:
+                                if service_process.process.poll() is not None:
+                                    service_process.status = 'stopped'
+                                    service_process.pid = None
+                                    service_process.process = None
                 time.sleep(2)
             except Exception as e:
                 logger.error(f"Error in monitor loop: {e}")
@@ -1159,16 +1302,19 @@ def delete_instance(instance_name: str) -> Dict:
         # 1. Load instance to know which services belong to it
         instance = get_instance(instance_name)
 
-        # 2. If this is the currently active instance, stop all running services
+        # 2. Stop all running services for this instance
+        inst_processes = pm._get_instance_processes(instance_name)
+        for service_id in list(inst_processes.keys()):
+            if pm.is_running(service_id, instance_name):
+                logger.info(f"Stopping service '{service_id}' (deleting instance '{instance_name}')")
+                stop_res = pm.stop_service(service_id, instance_name)
+                if stop_res.get('success'):
+                    result['stopped_services'].append(service_id)
+                else:
+                    result['errors'].append(f"Failed to stop {service_id}: {stop_res.get('error', '?')}")
+        # Remove instance from process tracking
+        pm._all_processes.pop(instance_name, None)
         if pm.current_instance == instance_name:
-            for service_id in list(pm.processes.keys()):
-                if pm.is_running(service_id):
-                    logger.info(f"Stopping service '{service_id}' (deleting instance '{instance_name}')")
-                    stop_res = pm.stop_service(service_id)
-                    if stop_res.get('success'):
-                        result['stopped_services'].append(service_id)
-                    else:
-                        result['errors'].append(f"Failed to stop {service_id}: {stop_res.get('error', '?')}")
             pm.current_instance = 'default'
 
         # 3. Delete instance JSON file
@@ -1417,8 +1563,8 @@ def instance_dashboard(instance_name):
             services = all_services
             service_config = {}
         
-        # Get status of all services
-        statuses = pm.get_all_statuses()
+        # Get status of all services for this instance
+        statuses = pm.get_all_statuses(instance_name)
         
         return render_template(
             'dashboard.html',
@@ -1470,8 +1616,8 @@ def instance_services(instance_name):
             services = all_services
             service_config = {}
         
-        # Get status of all services
-        statuses = pm.get_all_statuses()
+        # Get status of all services for this instance
+        statuses = pm.get_all_statuses(instance_name)
         
         return render_template(
             'services_management.html',
@@ -1528,17 +1674,94 @@ def instance_config(instance_name):
 def configs_page():
     """Configuration management page."""
     try:
+        current_instance_name = pm.current_instance or 'default'
+        instances = load_instances() or []
         return render_template(
             'configs.html',
             config={
                 'services': pm.config.get('services', {}),
                 'manager': pm.config.get('manager', {}),
                 'project_root': pm.config.get('project_root', '..')
-            }
+            },
+            current_instance_name=current_instance_name,
+            instances=instances
         )
     except Exception as e:
         logger.error(f"Error in configs page: {e}")
         return f"Error: {str(e)}", 500
+
+# ============================================================================
+# API Endpoints - Ollama Models
+# ============================================================================
+
+@app.route('/api/ollama/models', methods=['GET'])
+def api_ollama_models():
+    """List all locally installed Ollama models by querying the Ollama API.
+    Accepts optional ?url= parameter, otherwise resolves from ki_chat instance config or defaults.
+    """
+    ollama_base = request.args.get('url', '').strip().rstrip('/')
+
+    if not ollama_base:
+        # Try to resolve from active instance's ki_chat config -> ollama.url
+        try:
+            inst_name = pm.current_instance or 'default'
+            cfg_file = get_instance_service_config_file(inst_name, 'ki_chat')
+            if cfg_file.exists():
+                with open(cfg_file, 'r', encoding='utf-8-sig') as f:
+                    ki_cfg = json.load(f)
+                chat_url = ki_cfg.get('ollama', {}).get('url', '')
+                if chat_url:
+                    # Extract base URL from e.g. "http://localhost:11434/api/chat"
+                    parts = chat_url.split('/api/')
+                    ollama_base = parts[0] if parts else ''
+        except Exception:
+            pass
+
+    if not ollama_base:
+        # Fallback: try ollama service config -> server.host/port
+        try:
+            inst_name = pm.current_instance or 'default'
+            cfg_file = get_instance_service_config_file(inst_name, 'ollama')
+            if cfg_file.exists():
+                with open(cfg_file, 'r', encoding='utf-8-sig') as f:
+                    oll_cfg = json.load(f)
+                host = oll_cfg.get('server', {}).get('host', '127.0.0.1')
+                port = oll_cfg.get('server', {}).get('port', 11434)
+                ollama_base = f"http://{host}:{port}"
+        except Exception:
+            pass
+
+    if not ollama_base:
+        ollama_base = 'http://127.0.0.1:11434'
+
+    tags_url = f"{ollama_base}/api/tags"
+    try:
+        req = urllib.request.Request(tags_url, method='GET')
+        req.add_header('Accept', 'application/json')
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            data = json.loads(resp.read().decode('utf-8'))
+
+        models = []
+        for m in data.get('models', []):
+            name = m.get('name', m.get('model', ''))
+            size_bytes = m.get('size', 0)
+            size_gb = round(size_bytes / (1024 ** 3), 1) if size_bytes else 0
+            details = m.get('details', {})
+            models.append({
+                'name': name,
+                'size_gb': size_gb,
+                'family': details.get('family', ''),
+                'parameter_size': details.get('parameter_size', ''),
+                'quantization': details.get('quantization_level', ''),
+                'modified_at': m.get('modified_at', ''),
+            })
+
+        return jsonify({'success': True, 'models': models, 'ollama_url': ollama_base}), 200
+    except urllib.error.URLError as e:
+        return jsonify({'success': False, 'error': f'Ollama nicht erreichbar: {e.reason}', 'models': [], 'ollama_url': ollama_base}), 200
+    except Exception as e:
+        logger.error(f"Error fetching Ollama models: {e}")
+        return jsonify({'success': False, 'error': str(e), 'models': [], 'ollama_url': ollama_base}), 200
 
 # ============================================================================
 # API Endpoints - Audio Devices
@@ -1753,7 +1976,7 @@ def api_get_all_statuses():
     """Get all service statuses."""
     try:
         instance_name = request.args.get('instance', default=pm.current_instance, type=str)
-        statuses = pm.get_all_statuses()
+        statuses = pm.get_all_statuses(instance_name)
 
         # Optional instance scoping
         instance = get_instance(instance_name) if instance_name else None
@@ -1968,7 +2191,7 @@ def api_stop_instance(instance_name):
         services_config = instance.get('services', {})
         for service_id, service_settings in services_config.items():
             if service_settings.get('enabled', False):
-                result = pm.stop_service(service_id)
+                result = pm.stop_service(service_id, instance_name)
                 if result.get('success'):
                     stopped_services.append(service_id)
                     logger.info(f"Stopped service: {service_id}")
@@ -2037,7 +2260,7 @@ def api_service_stop(instance_name, service_id):
     """Stop a specific service in an instance."""
     try:
         pm.current_instance = instance_name
-        result = pm.stop_service(service_id)
+        result = pm.stop_service(service_id, instance_name)
         return jsonify(result), (200 if result.get('success') else 400)
     except Exception as e:
         logger.error(f"API error (service_stop): {e}")
@@ -2060,8 +2283,9 @@ def api_service_logs(service_id):
     try:
         lines = request.args.get('lines', default=100, type=int)
         lines = max(1, min(lines, 1000))
+        instance = request.args.get('instance', default=pm.current_instance, type=str)
 
-        result = pm.get_logs(service_id, lines)
+        result = pm.get_logs(service_id, lines, instance)
         return jsonify(result), (200 if result.get('success') else 404)
     except Exception as e:
         logger.error(f"API error (service_logs): {e}")
@@ -2214,13 +2438,15 @@ def api_service_proxy(service_id):
         if not port:
             return jsonify({'success': False, 'error': 'Cannot resolve service port'}), 400
         
-        # Build target URL
+        # Build target URL — URL-encode non-ASCII characters (e.g. ü in "begrüßen")
         target_url = f"http://127.0.0.1:{port}{path}"
+        # Encode any non-ASCII chars in the URL path for urllib compatibility
+        target_url = urllib.parse.quote(target_url, safe=':/?&=#@!$+,;[]')
         
         # Prepare request
         req_body = None
         if body is not None and method in ('POST', 'PUT', 'PATCH'):
-            req_body = json.dumps(body).encode('utf-8')
+            req_body = json.dumps(body, ensure_ascii=False).encode('utf-8')
         
         req = urllib.request.Request(
             target_url,
@@ -2231,7 +2457,7 @@ def api_service_proxy(service_id):
         req.add_header('Accept', 'application/json')
         
         try:
-            with urllib.request.urlopen(req, timeout=30) as resp:
+            with urllib.request.urlopen(req, timeout=180) as resp:
                 resp_body = resp.read().decode('utf-8', errors='replace')
                 content_type = resp.headers.get('Content-Type', '')
                 

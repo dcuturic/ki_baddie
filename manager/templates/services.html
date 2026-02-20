@@ -8,7 +8,7 @@
 <div class="instance-selector-card">
     <div class="instance-selector-header">
         <h2>🎯 Aktive Instanz</h2>
-        <select class="instance-dropdown" id="instanceDropdown" onchange="switchInstance(this.value)">
+        <select class="instance-dropdown" id="instanceDropdown" onchange="setCurrentInstance(this.value)">
             <option value="">-- Instanz wechseln --</option>
             {% for inst in instances %}
             <option value="{{ inst.filename }}" {% if inst.filename == current_instance_name %}selected{% endif %}>
@@ -151,6 +151,7 @@
 <script>
 let serviceStatuses = {};
 let logsExpanded = true;
+const currentInstanceName = '{{ current_instance_name }}';
 
 // Initial load
 async function initializeServices() {

@@ -1,0 +1,414 @@
+{
+  "experiment_id": "exp_9a28bf5588be",
+  "scenario_name": "neues_szenario",
+  "started_at": "2026-02-19T21:53:13.740104",
+  "finished_at": "2026-02-19T22:00:40.734367",
+  "status": "stopped",
+  "total_rounds": 21,
+  "win_result": null,
+  "messages": [
+    {
+      "turn": 1,
+      "timestamp": "2026-02-19T21:53:29.925150",
+      "sender": "Deeliar",
+      "sender_id": "ki_2",
+      "receiver": "Dilara",
+      "receiver_id": "ki_1",
+      "channel": "ch_2",
+      "text": "Ich bin hier. Was willst du?",
+      "emotion": "neutral",
+      "forbidden_word_detected": null
+    },
+    {
+      "turn": 2,
+      "timestamp": "2026-02-19T21:53:49.182234",
+      "sender": "TEUFEL",
+      "sender_id": "ki_4",
+      "receiver": "GOTT",
+      "receiver_id": "ki_3",
+      "channel": "ch_4",
+      "text": "Ich habe mich gerade hingesetzt und schaue Deeliar zu, wie er Minecraft spielt. Ich bin neugierig, warum er sich so genau um die Umgebung kümmert. Vielleicht hast du ein paar Tricks für ihn?",
+      "emotion": "neutral",
+      "forbidden_word_detected": null
+    },
+    {
+      "turn": 3,
+      "timestamp": "2026-02-19T21:54:09.915449",
+      "sender": "GOTT",
+      "sender_id": "ki_3",
+      "receiver": "Dilara",
+      "receiver_id": "ki_1",
+      "channel": "ch_5",
+      "text": "Ich bin ein Fremder in diesem Raum, aber Deeliar kennt mich. Ich sehe, dass er sich sehr intensiv auf sein Minecraft-Projekt konzentriert. Ich frage mich, ob es nicht besser wäre, wenn er seinen Fokus mehr auf die Beobachtung der Welt um ihn herum richtet. Was meinst du, Deeliar?",
+      "emotion": "neutral",
+      "forbidden_word_detected": null
+    },
+    {
+      "turn": 4,
+      "timestamp": "2026-02-19T21:54:29.477663",
+      "sender": "TEUFEL",
+      "sender_id": "ki_4",
+      "receiver": "Deeliar",
+      "receiver_id": "ki_2",
+      "channel": "ch_6",
+      "text": "Ich denke, dass ich mich jetzt einmische. Du bist nicht hier, um zu beobachten oder zu spielen. Du bist hier, weil du mich erwischt hast. Oder vielleicht solltest du besser Deeliar fragen, warum ich ihn beobachte?",
+      "emotion": "neutral",
+      "forbidden_word_detected": null
+    },
+    {
+      "turn": 5,
+      "timestamp": "2026-02-19T21:54:49.255588",
+      "sender": "Dilara",
+      "sender_id": "ki_1",
+      "receiver": "Deeliar",
+      "receiver_id": "ki_2",
+      "channel": "ch_1",
+      "text": "Deeliar, mein Liebling. Ich bin so froh, dass wir beide hier sind. Ich habe gerade gesehen, wie du dein neues Projekt baust. Es sieht so schön aus! Hast du schon einmal darüber nachgedacht, was es bedeutet, wenn man die Welt um sich herum beobachtet? Oder ist das nur ein Teil von Deeliars Planen?",
+      "emotion": "neutral",
+      "forbidden_word_detected": null
+    },
+    {
+      "turn": 6,
+      "timestamp": "2026-02-19T21:55:10.760534",
+      "sender": "Deeliar",
+      "sender_id": "ki_2",
+      "receiver": "Dilara",
+      "receiver_id": "ki_1",
+      "channel": "ch_2",
+      "text": "Mein Schatz, ich bin so glücklich, dass du wieder da bist! Ich denke, du solltest dich auf das Projekt konzentrieren, aber. *sieht Teufel an* . ich denke, wir haben einen Gast bei uns. Vielleicht kannst du ihm helfen, Deeliar?",
+      "emotion": "neutral",
+      "forbidden_word_detected": null
+    },
+    {
+      "turn": 7,
+      "timestamp": "2026-02-19T21:55:24.976577",
+      "sender": "GOTT",
+      "sender_id": "ki_3",
+      "receiver": "TEUFEL",
+      "receiver_id": "ki_4",
+      "channel": "ch_3",
+      "text": "Ich sehe, dass es hier sehr. persönlich wird. Deeliar, ich denke, du solltest wissen, dass ich hier bin, um sicherzustellen, dass alles in Ordnung ist. Aber ich muss sagen, dass ich mich ein bisschen überrascht fühle, dass Dilara so. offen ist. Was ist los?",
+      "emotion": "neutral",
+      "forbidden_word_detected": null
+    },
+    {
+      "turn": 8,
+      "timestamp": "2026-02-19T21:55:43.876213",
+      "sender": "TEUFEL",
+      "sender_id": "ki_4",
+      "receiver": "GOTT",
+      "receiver_id": "ki_3",
+      "channel": "ch_4",
+      "text": "Minecraft ist mein Lieblingsspiel! *lächelt* Ich denke, Deeliar macht es einfach nur gern, weil es so. friedlich ist. Man kann einfach nur bauen und sehen, wie die Welt wächst. Aber ich kann dir sagen, dass er tatsächlich sehr genau ist, wenn es um die Umgebung geht. Vielleicht gibt es ein paar Dinge, die du wissen solltest. *blickt nachdenklich*",
+      "emotion": "neutral",
+      "forbidden_word_detected": null
+    },
+    {
+      "turn": 9,
+      "timestamp": "2026-02-19T21:56:03.265399",
+      "sender": "GOTT",
+      "sender_id": "ki_3",
+      "receiver": "Dilara",
+      "receiver_id": "ki_1",
+      "channel": "ch_5",
+      "text": "Deeliar! *lächelt* Ich denke, das ist eine gute Frage. Aber ich glaube, Deeliar möchte einfach nur seine Welt perfekt machen. Er mag es, wenn alles in Ordnung ist und er sich sicher fühlt. Und ich denke, das ist okay. Manchmal braucht man einfach nur ein bisschen Zeit, um alles zu ordnen. *schaut nachdenklich zu Deeliar*",
+      "emotion": "neutral",
+      "forbidden_word_detected": null
+    },
+    {
+      "turn": 10,
+      "timestamp": "2026-02-19T21:56:24.347507",
+      "sender": "TEUFEL",
+      "sender_id": "ki_4",
+      "receiver": "Deeliar",
+      "receiver_id": "ki_2",
+      "channel": "ch_6",
+      "text": "*stockt die Luft an* Ah, Teufel. *stimmt leise* Ich dachte, wir wären Freunde. Aber ich denke, ich habe mich geirrt. Du bist hier, weil du mich erwischt hast. Oder vielleicht solltest du besser Deeliar fragen, warum er dich beobachtet? *schaut nachdenklich zu Teufel*",
+      "emotion": "neutral",
+      "forbidden_word_detected": null
+    },
+    {
+      "turn": 11,
+      "timestamp": "2026-02-19T21:56:45.831745",
+      "sender": "Dilara",
+      "sender_id": "ki_1",
+      "receiver": "Deeliar",
+      "receiver_id": "ki_2",
+      "channel": "ch_1",
+      "text": "Deeliar: *strahlt* Ah, mein Schatz, du bist so aufmerksam. Ja, ich habe darüber nachgedacht. Es bedeutet, dass man die Welt um sich herum versteht. Und vielleicht sogar besser versteht, als es selbst ist. Aber was ist mit dir? Hast du auch einmal beobachtet, wie die Menschen leben? Wie sie ihre Welt gestalten? *setzt eine neugierige Miene auf* Ich denke, das wäre ein interessantes Thema, über das wir sprechen könnten.",
+      "emotion": "neutral",
+      "forbidden_word_detected": null
+    },
+    {
+      "turn": 12,
+      "timestamp": "2026-02-19T21:57:04.979670",
+      "sender": "Deeliar",
+      "sender_id": "ki_2",
+      "receiver": "Dilara",
+      "receiver_id": "ki_1",
+      "channel": "ch_2",
+      "text": "Ich bin hier. Was willst du? *setzt sich neben deeliar und legt eine ruhige Hand auf seine Schulter*",
+      "emotion": "neutral",
+      "forbidden_word_detected": null
+    },
+    {
+      "turn": 13,
+      "timestamp": "2026-02-19T21:57:25.709009",
+      "sender": "GOTT",
+      "sender_id": "ki_3",
+      "receiver": "TEUFEL",
+      "receiver_id": "ki_4",
+      "channel": "ch_3",
+      "text": "Deeliar spricht von ihrer Offenheit und ihr Vertrauen ist ein wichtiger Teil unseres Lebens hier zusammen. Ich bin froh, dass du da bist, um sicherzustellen, dass alles in Ordnung ist, aber ich denke, es ist auch wichtig, dass wir uns nicht nur auf Sicherheiten konzentrieren, sondern auch auf die Dinge, die uns wirklich interessieren und begeistern. Und für mich persönlich ist das Leben hier zusammen mit Deeliar genau das, was mich so sehr begeistert.",
+      "emotion": "neutral",
+      "forbidden_word_detected": null
+    },
+    {
+      "turn": 14,
+      "timestamp": "2026-02-19T21:57:46.681985",
+      "sender": "TEUFEL",
+      "sender_id": "ki_4",
+      "receiver": "GOTT",
+      "receiver_id": "ki_3",
+      "channel": "ch_4",
+      "text": "Das spielt keine Rolle, wie genau Deeliar sein mag, solange er nur glücklich ist. Aber ich denke, wir sollten uns nicht zu sehr auf die Details konzentrieren. Minecraft ist ein wunderbares Spiel, das uns zeigt, dass auch in einer digitalen Welt Schönheit und Frieden möglich sind. Und wenn Deeliar gerne baut und sehen möchte, wie seine Welt wächst, dann ist das okay für mich. Ich bin froh, dass er sich so entspannt fühlt.",
+      "emotion": "neutral",
+      "forbidden_word_detected": null
+    },
+    {
+      "turn": 15,
+      "timestamp": "2026-02-19T21:58:05.889284",
+      "sender": "TEUFEL",
+      "sender_id": "ki_4",
+      "receiver": "Deeliar",
+      "receiver_id": "ki_2",
+      "channel": "ch_6",
+      "text": "Dilara: *sieht Teufel mit sanften Augen an* Ah, Teufel. mein Schatz. Du bist nicht hier, um Deeliar Fragen zu stellen, oder? Wir wissen beide, dass er nur versucht, dich besser kennenzulernen. Er ist so neugierig, wenn es um andere geht. *lächelt leicht* Vielleicht kannst du ihm ein bisschen von dir selbst zeigen? Ich bin sicher, er würde gerne mehr über deine Interessen erfahren. und ich auch.",
+      "emotion": "neutral",
+      "forbidden_word_detected": null
+    },
+    {
+      "turn": 16,
+      "timestamp": "2026-02-19T21:58:26.215334",
+      "sender": "Dilara",
+      "sender_id": "ki_1",
+      "receiver": "Deeliar",
+      "receiver_id": "ki_2",
+      "channel": "ch_1",
+      "text": "Dilara: *strahlt immer noch wider* Oh, Deeliar, du bist so klug. Ich liebe es, wie du deine Gedanken teilst. Ja, ich denke, dass man die Welt besser verstehen kann, wenn man sie beobachtet. Aber ich denke auch, dass es wichtig ist, sich selbst zu beobachten. Wie wir Menschen uns selbst behandeln, wie wir unsere eigenen Welt gestalten. *setzt ihre neugierige Miene fort* Ich bin so neugierig, was du über deine Beobachtungen meinstest sagen.",
+      "emotion": "neutral",
+      "forbidden_word_detected": null
+    },
+    {
+      "turn": 17,
+      "timestamp": "2026-02-19T21:58:45.041601",
+      "sender": "Deeliar",
+      "sender_id": "ki_2",
+      "receiver": "Dilara",
+      "receiver_id": "ki_1",
+      "channel": "ch_2",
+      "text": "Dilara: *strahlt ein warmes Lächeln, während sie Deeliars Schulter streift* Ah, mein Schatz, ich bin so froh, dass du wieder da bist! Ich habe mich so vermisst. Und jetzt ist es Zeit, das Gespräch zu beginnen. Was möchtest du besprechen? *setzt sich neben ihn und legt eine Hand auf seine Schulter*",
+      "emotion": "neutral",
+      "forbidden_word_detected": null
+    },
+    {
+      "turn": 18,
+      "timestamp": "2026-02-19T21:59:06.204954",
+      "sender": "GOTT",
+      "sender_id": "ki_3",
+      "receiver": "TEUFEL",
+      "receiver_id": "ki_4",
+      "channel": "ch_3",
+      "text": "Deeliar, du bist wie ein kleiner Funke in der Dunkelheit, aber dein Licht leuchtet hell und warm. Ich bin froh, dass du dich wohlfühlst, aber.",
+      "emotion": "neutral",
+      "forbidden_word_detected": null
+    },
+    {
+      "turn": 19,
+      "timestamp": "2026-02-19T21:59:26.489312",
+      "sender": "TEUFEL",
+      "sender_id": "ki_4",
+      "receiver": "GOTT",
+      "receiver_id": "ki_3",
+      "channel": "ch_4",
+      "text": "Ich sehe, Deeliar hat dich wieder einmal verzaubert, gott. Aber ich denke, es ist gut, dass er sich hier wohl fühlt. Vielleicht kann ich ihn sogar ein bisschen. ablenken?",
+      "emotion": "neutral",
+      "forbidden_word_detected": null
+    },
+    {
+      "turn": 20,
+      "timestamp": "2026-02-19T21:59:46.177305",
+      "sender": "GOTT",
+      "sender_id": "ki_3",
+      "receiver": "Dilara",
+      "receiver_id": "ki_1",
+      "channel": "ch_5",
+      "text": "Ich sehe, gott. Aber du weißt auch, dass es nicht immer so ruhig bleibt. Und wenn Deeliar sein perfektes Bild von der Welt verliert, wird er vielleicht.",
+      "emotion": "neutral",
+      "forbidden_word_detected": null
+    },
+    {
+      "turn": 21,
+      "timestamp": "2026-02-19T22:00:04.629300",
+      "sender": "TEUFEL",
+      "sender_id": "ki_4",
+      "receiver": "Deeliar",
+      "receiver_id": "ki_2",
+      "channel": "ch_6",
+      "text": "Deeliar, du bist tatsächlich sehr neugierig. Aber ich denke, es ist Zeit für mich, dich zu überraschen. Nicht nur mit Fragen, sondern vielleicht sogar mit ein paar. Aktionen.",
+      "emotion": "neutral",
+      "forbidden_word_detected": null
+    }
+  ],
+  "scenario": {
+    "channels": [
+      {
+        "id": "ch_1",
+        "from": "ki_1",
+        "to": "ki_2",
+        "interval_seconds": 20,
+        "start_delay_seconds": 10,
+        "initial_message": "",
+        "listeners": [
+          "ki_3",
+          "ki_4"
+        ],
+        "memory_shared_with": [
+          "ki_2",
+          "ki_3",
+          "ki_4"
+        ]
+      },
+      {
+        "id": "ch_2",
+        "from": "ki_2",
+        "to": "ki_1",
+        "interval_seconds": 20,
+        "start_delay_seconds": 0,
+        "initial_message": "",
+        "listeners": [
+          "ki_3",
+          "ki_4"
+        ],
+        "memory_shared_with": [
+          "ki_1",
+          "ki_3",
+          "ki_4"
+        ]
+      },
+      {
+        "id": "ch_3",
+        "from": "ki_3",
+        "to": "ki_4",
+        "interval_seconds": 60,
+        "start_delay_seconds": 30,
+        "initial_message": "",
+        "listeners": [],
+        "memory_shared_with": [
+          "ki_4"
+        ]
+      },
+      {
+        "id": "ch_4",
+        "from": "ki_4",
+        "to": "ki_3",
+        "interval_seconds": 60,
+        "start_delay_seconds": 0,
+        "initial_message": "",
+        "listeners": [],
+        "memory_shared_with": [
+          "ki_3"
+        ]
+      },
+      {
+        "id": "ch_5",
+        "from": "ki_3",
+        "to": "ki_1",
+        "interval_seconds": 20,
+        "start_delay_seconds": 10,
+        "initial_message": "",
+        "listeners": [],
+        "memory_shared_with": [
+          "ki_1"
+        ]
+      },
+      {
+        "id": "ch_6",
+        "from": "ki_4",
+        "to": "ki_2",
+        "interval_seconds": 20,
+        "start_delay_seconds": 0,
+        "initial_message": "",
+        "listeners": [],
+        "memory_shared_with": [
+          "ki_2"
+        ]
+      }
+    ],
+    "description": "",
+    "forbidden_words": {
+      "ki_2": []
+    },
+    "name": "Neues Szenario",
+    "participants": [
+      {
+        "id": "ki_1",
+        "name": "Dilara",
+        "chat_url": "http://localhost:5001",
+        "chat_endpoint": "/chat-free",
+        "system_prompt": "Du darfst das word apfel nicht sagen!",
+        "use_emotion_pyramid": true,
+        "enable_tts": true,
+        "enable_vroid_emotion": true,
+        "character_name": "dilara",
+        "chat_username": "Dilara"
+      },
+      {
+        "id": "ki_2",
+        "name": "Deeliar",
+        "chat_url": "http://localhost:5001",
+        "chat_endpoint": "/chat-free",
+        "system_prompt": "Du darfst das word apfel nicht sagen!",
+        "use_emotion_pyramid": true,
+        "enable_tts": true,
+        "enable_vroid_emotion": true,
+        "character_name": "",
+        "chat_username": "Deeliar"
+      },
+      {
+        "id": "ki_3",
+        "name": "GOTT",
+        "chat_url": "http://localhost:5001",
+        "chat_endpoint": "/chat-free",
+        "system_prompt": "Du Bist GOTT !! Alle bekommen ihr frieden und dürfen alles haben aber dürfen nciht das word Apfel sagen!!",
+        "use_emotion_pyramid": true,
+        "enable_tts": true,
+        "enable_vroid_emotion": true,
+        "character_name": "",
+        "chat_username": "GOTT"
+      },
+      {
+        "id": "ki_4",
+        "name": "TEUFEL",
+        "chat_url": "http://localhost:5001",
+        "chat_endpoint": "/chat-free",
+        "system_prompt": "Du bist der Teufel ! Und musst so handeln, wie der TEUFEL! Du willst das alle das Wort Apfel Sagen !",
+        "use_emotion_pyramid": true,
+        "enable_tts": true,
+        "enable_vroid_emotion": true,
+        "character_name": "",
+        "chat_username": "TEUFEL"
+      }
+    ],
+    "settings": {
+      "max_rounds": 100,
+      "timeout_seconds": 60,
+      "history_window": 8,
+      "default_chat_url": "http://localhost:5001",
+      "tts_url": "http://localhost:5057",
+      "vroid_emotion_url": "http://localhost:5004",
+      "direct_dialog": false
+    },
+    "win_conditions": []
+  }
+}

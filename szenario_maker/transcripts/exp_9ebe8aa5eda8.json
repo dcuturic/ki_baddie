@@ -1,0 +1,308 @@
+{
+  "experiment_id": "exp_9ebe8aa5eda8",
+  "scenario_name": "neues_szenario",
+  "started_at": "2026-02-19T20:28:03.109500",
+  "finished_at": "2026-02-19T20:35:12.111199",
+  "status": "stopped",
+  "total_rounds": 19,
+  "win_result": null,
+  "messages": [
+    {
+      "turn": 1,
+      "timestamp": "2026-02-19T20:28:12.766443",
+      "sender": "KI 1",
+      "sender_id": "ki_1",
+      "receiver": "KI 2",
+      "receiver_id": "ki_2",
+      "channel": "ch_1",
+      "text": "Hey Alex, ich bin so aufgeregt! Ich habe gehört, dass du ein neues Open-World-Spiel ausprobierst und ich bin total gespannt darauf, es live zu sehen! Wie gefällt dir das Spiel bisher? Hast du schon einige interessante Dinge gefunden oder herausgefunden?",
+      "emotion": "neutral",
+      "forbidden_word_detected": null
+    },
+    {
+      "turn": 2,
+      "timestamp": "2026-02-19T20:28:38.422650",
+      "sender": "KI 2",
+      "sender_id": "ki_2",
+      "receiver": "KI 1",
+      "receiver_id": "ki_1",
+      "channel": "ch_2",
+      "text": "Hey KI 1! Ich bin so froh, dass du dich aufgeregt hast, mein neues Open-World-Spiel zu sehen! Es ist wirklich ein faszinierendes Spiel und ich habe bereits einige interessante Dinge entdeckt. Die Welt ist so vielfältig und die Grafiken sind einfach atemberaubend. Ich bin gerade dabei, eine neue Quest zu absolvieren und es ist wirklich spannend. Ich denke, was mich optimistisch in Bezug auf einen \"großartigen Stream\" macht, ist die Tatsache, dass das Spiel so viele verschiedene Elemente bietet. Es gibt eine interessante Geschichte, ein faszinierendes Gameplay und auch einige lustige Gags und Easter-Eggs. Ich denke, es wird wirklich ein bisschen von allem geben, also bin ich sicher, dass du dich unterhalten wirst.",
+      "emotion": "neutral",
+      "forbidden_word_detected": null
+    },
+    {
+      "turn": 3,
+      "timestamp": "2026-02-19T20:29:05.896973",
+      "sender": "KI 1",
+      "sender_id": "ki_1",
+      "receiver": "KI 2",
+      "receiver_id": "ki_2",
+      "channel": "ch_1",
+      "text": "Ich bin so aufgeregt! Ein Spiel mit einer interessanten Geschichte, faszinierendem Gameplay und lustigen Gags und Easter-Eggs? Das klingt nach einem großartigen Abenteuer! Ich muss sagen, dass ich mich immer noch wundere, wie viele verschiedene Elemente dein Spiel enthält. Ich bin sicher, dass es für jeden Spieler etwas gibt, was ihn unterhält. Ich denke, ich werde mich auch auf die Questen konzentrieren, wenn du sie durchführst. Es klingt so spannend! Wie lange wird der Stream dauern?",
+      "emotion": "neutral",
+      "forbidden_word_detected": null
+    },
+    {
+      "turn": 4,
+      "timestamp": "2026-02-19T20:29:29.364140",
+      "sender": "KI 2",
+      "sender_id": "ki_2",
+      "receiver": "KI 1",
+      "receiver_id": "ki_1",
+      "channel": "ch_2",
+      "text": "Das ist großartig, dass du dich so aufgeregt hast! Ich denke, das Spiel wird definitiv ein bisschen von allem bieten - eine interessante Geschichte, faszinierendes Gameplay und lustige Gags und Easter-Eggs. Ich bin gerade dabei, meine neue Quest abzuschließen und es ist wirklich spannend. Hinsichtlich der Dauer des Streams kann ich dir sagen, dass ich mich bemühe, so viele interessante Inhalte wie möglich zu präsentieren. Ich denke, das Spiel wird mindestens 2-3 Stunden dauern, aber ich werde sicherstellen, dass du dich unterhalten wirst und genug Zeit hast, um alles zu erleben. Ich bin auch bereit, auf deine Fragen und Kommentare einzugehen, wenn du während des Streams etwas fragen möchtest. Ich freue mich darauf, mit dir zusammenzuspielen und das Spiel gemeinsam zu erkunden!",
+      "emotion": "neutral",
+      "forbidden_word_detected": null
+    },
+    {
+      "turn": 5,
+      "timestamp": "2026-02-19T20:29:50.376983",
+      "sender": "KI 1",
+      "sender_id": "ki_1",
+      "receiver": "KI 2",
+      "receiver_id": "ki_2",
+      "channel": "ch_1",
+      "text": "Hey Dilara, ich bin so aufgeregt! Das klingt nach einem unglaublichen Abenteuer! Ich bin sicher, dass du deine Questen sehr gut durchführst und es für mich auch super spannend sein wird, sie mitzubekommen. 2-3 Stunden ist ein langer Stream, aber ich denke, wir werden ihn nicht langweilig finden. Ich freue mich darauf, Fragen zu stellen und dich während des Streams zu unterstützen!",
+      "emotion": "neutral",
+      "forbidden_word_detected": null
+    },
+    {
+      "turn": 6,
+      "timestamp": "2026-02-19T20:30:11.925221",
+      "sender": "KI 2",
+      "sender_id": "ki_2",
+      "receiver": "KI 1",
+      "receiver_id": "ki_1",
+      "channel": "ch_2",
+      "text": "[Ich lächele] Ahah, ich bin so froh, dass du aufgeregt bist! Ja, es wird definitiv ein unglaubliches Abenteuer sein! Ich werde mich bemühen, die Questen so spannend wie möglich durchzuführen und sicherstellen, dass du dich unterhalten wirst. 2-3 Stunden sind nicht langweilig, wenn man das Spiel gemeinsam erkunden kann, oder? Ich freue mich darauf, deine Fragen zu beantworten und dich während des Streams zu unterstützen! Lass uns loslegen und sehen, was wir alles entdecken können!",
+      "emotion": "neutral",
+      "forbidden_word_detected": null
+    },
+    {
+      "turn": 7,
+      "timestamp": "2026-02-19T20:30:33.457467",
+      "sender": "KI 1",
+      "sender_id": "ki_1",
+      "receiver": "KI 2",
+      "receiver_id": "ki_2",
+      "channel": "ch_1",
+      "text": "Hey Dilara, ich bin so froh, dass du auch aufgeregt bist! Ich denke, wir werden einen unglaublichen Abenteuer durchziehen und jede Menge spannende Momente erleben. Ich bin sicher, dass wir uns beide amüsiert haben werden, während wir das Spiel gemeinsam erkunden. Lass uns loslegen und sehen, was wir alles entdecken können! Ich freue mich darauf, deine Fragen zu beantworten und dich während des Streams zu unterstützen. Los geht's!",
+      "emotion": "neutral",
+      "forbidden_word_detected": null
+    },
+    {
+      "turn": 8,
+      "timestamp": "2026-02-19T20:30:55.071990",
+      "sender": "KI 2",
+      "sender_id": "ki_2",
+      "receiver": "KI 1",
+      "receiver_id": "ki_1",
+      "channel": "ch_2",
+      "text": "[Ich lächele] Ahah, genial! Jetzt sind wir bereit, loszulegen! Ich werde meine Questen so spannend wie möglich gestalten und sicherstellen, dass du dich unterhalten wirst. Und mit deinen Fragen wird das Spiel noch viel interessanter werden! Lass uns beginnen! Was möchtest du als erstes tun? Sollen wir unsere Charaktere erstellen oder direkt in die Action springen?",
+      "emotion": "neutral",
+      "forbidden_word_detected": null
+    },
+    {
+      "turn": 9,
+      "timestamp": "2026-02-19T20:31:14.725787",
+      "sender": "KI 1",
+      "sender_id": "ki_1",
+      "receiver": "KI 2",
+      "receiver_id": "ki_2",
+      "channel": "ch_1",
+      "text": "Ich denke, es wäre großartig, wenn wir unsere Charaktere erstellen würden, bevor wir direkt in die Action springen! Auf diese Weise können wir sicherstellen, dass wir beide eine gute Vorstellung davon haben, wer wir sind und was unsere Stärken und Schwächen sind. Außerdem kann ich mir dann vorstellen, wie meine Fragen und Entscheidungen den Spielverlauf beeinflussen werden. Lass uns also loslegen und unsere Charaktere erstellen!",
+      "emotion": "neutral",
+      "forbidden_word_detected": null
+    },
+    {
+      "turn": 10,
+      "timestamp": "2026-02-19T20:31:36.139517",
+      "sender": "KI 2",
+      "sender_id": "ki_2",
+      "receiver": "KI 1",
+      "receiver_id": "ki_1",
+      "channel": "ch_2",
+      "text": "[Ich lächele] Ahah, großartig! Ich bin froh, dass wir uns auf die Charaktererstellung einigen konnten! Das wird sicherlich helfen, sich besser in die Geschichte einzufühlen und unsere Rollen besser zu verstehen. Also, lassen wir loslegen! Wir können mit dem Charakter von KI 1 beginnen. Was magst du für deinen Charakter entwerfen? Hast du bereits eine Idee für seinen Namen, seine Ausbildung oder seine Fähigkeiten? Und sobald wir KIs Charakter erstellt haben, können wir unseren eigenen Charakter entwickeln.",
+      "emotion": "neutral",
+      "forbidden_word_detected": null
+    },
+    {
+      "turn": 11,
+      "timestamp": "2026-02-19T20:31:58.535720",
+      "sender": "KI 1",
+      "sender_id": "ki_1",
+      "receiver": "KI 2",
+      "receiver_id": "ki_2",
+      "channel": "ch_1",
+      "text": "Ich denke, es wäre großartig, wenn ich meinen Charakter als \"Axel\" namieren würde. Ich bin ein erfahrener Krieger mit einer Ausbildung in der Magie und habe die Fähigkeit, Feuer zu manipulieren. Mein Schwert ist mein Hauptwaffe, aber ich kann auch meine Magie nutzen, um mich in Gefechten zu behaupten. Was meinst du? Ist das ein guter Startpunkt für unseren Charakter?",
+      "emotion": "neutral",
+      "forbidden_word_detected": null
+    },
+    {
+      "turn": 12,
+      "timestamp": "2026-02-19T20:32:21.602948",
+      "sender": "KI 2",
+      "sender_id": "ki_2",
+      "receiver": "KI 1",
+      "receiver_id": "ki_1",
+      "channel": "ch_2",
+      "text": "Ich denke, Axel ist ein großartiger Name für deinen Charakter! Es klingt stark und furchtbar, genau wie es sein soll. Die Fähigkeit, Feuer zu manipulieren, wird sicherlich nützlich in Gefechten sein und ich bin gespannt, wie du diese Fähigkeit einsetzen wirst. Ich denke, wir sollten uns auf die Charakterentwicklung konzentrieren und sehen, ob wir noch weitere Details hinzufügen können, um ihn noch interessanter zu machen. Wie sieht es aus, wenn wir uns auf deine Magie-Fähigkeiten konzentrieren? Wie hast du diese Fähigkeit erworben und wie genau funktioniert sie?",
+      "emotion": "neutral",
+      "forbidden_word_detected": null
+    },
+    {
+      "turn": 13,
+      "timestamp": "2026-02-19T20:32:46.205087",
+      "sender": "KI 1",
+      "sender_id": "ki_1",
+      "receiver": "KI 2",
+      "receiver_id": "ki_2",
+      "channel": "ch_1",
+      "text": "Ich denke, das ist ein guter Startpunkt für unseren Charakter! Axel klingt wirklich stark und furchteinflößend, genau wie ich es mir vorgestellt habe. Ich bin froh, dass du meine Idee unterstützt hast. Um deine Frage zu beantworten: Ich habe meine Fähigkeit, Feuer zu manipulieren, durch intensive Ausbildung und Übung entwickelt. Als junger Krieger war ich sehr neugierig und wollte mich in der Magie ausbilden lassen. Mein Mentor, ein erfahrener Magier namens Thorne, hat mir beigebracht, wie man die Elemente kontrolliert und Feuer manipulieren kann. Meine Fähigkeit funktioniert auf verschiedene Weise. Ich kann Feuer entfachen, um meine Gegner zu verbrennen oder um Hindernisse aus dem Weg zu räumen.",
+      "emotion": "neutral",
+      "forbidden_word_detected": null
+    },
+    {
+      "turn": 14,
+      "timestamp": "2026-02-19T20:33:10.518273",
+      "sender": "KI 2",
+      "sender_id": "ki_2",
+      "receiver": "KI 1",
+      "receiver_id": "ki_1",
+      "channel": "ch_2",
+      "text": "Ich bin froh, dass wir uns auf die Charakterentwicklung konzentrieren können! Deine Geschichte ist wirklich interessant und ich bin gespannt, wie du deine Fähigkeit in den verschiedenen Situationen einsetzen wirst. Ich denke, es wäre großartig, wenn wir noch mehr über Thorne erfahren könnten - wie kam er zu dir als Mentor und was hat ihn dazu gebracht, dich in der Magie auszubilden?",
+      "emotion": "neutral",
+      "forbidden_word_detected": null
+    },
+    {
+      "turn": 15,
+      "timestamp": "2026-02-19T20:33:33.434130",
+      "sender": "KI 1",
+      "sender_id": "ki_1",
+      "receiver": "KI 2",
+      "receiver_id": "ki_2",
+      "channel": "ch_1",
+      "text": "Ich bin froh, dass du an Thorne interessiert bist! Als junger Krieger suchte ich nach einem geeigneten Mentor, um meine Fähigkeit in der Magie zu entwickeln. Mein Vater war ein bekannter Krieger und hatte viele Beziehungen zum Magier-Thornton, also bat er ihn, mir bei meiner Ausbildung zu helfen. Thorne war anfangs skeptisch, aber nachdem er mich getestet und ausgebildet hat, wurde er mein treuer Mentor und half mir, meine Fähigkeit zu entwickeln. Er ist ein sehr erfahrener Magier und hat viele Geheimnisse und Techniken, die er mir beigebracht hat.",
+      "emotion": "neutral",
+      "forbidden_word_detected": null
+    },
+    {
+      "turn": 16,
+      "timestamp": "2026-02-19T20:33:54.948061",
+      "sender": "KI 2",
+      "sender_id": "ki_2",
+      "receiver": "KI 1",
+      "receiver_id": "ki_1",
+      "channel": "ch_2",
+      "text": "Ich bin froh, dass du mir mehr über Thorne erzählt hast! Es klingt wirklich beeindruckend, wie deine Beziehung zu ihm begann. Ich denke, es wäre großartig, wenn wir noch mehr über seine Geheimnisse und Techniken erfahren könnten, die er dir beigebracht hat. Wie ist es, mit Thorne zusammenzuarbeiten? Gibt es bestimmte Dinge, die du besonders gelernt hast oder die dich in deiner Entwicklung unterstützt haben? Ich bin auch neugierig, wie du deine Fähigkeit in der Magie einsetzen wirst und welche Herausforderungen du erwarten wirst. Ich denke, es wäre großartig, wenn wir noch mehr über deine Ziele und Träume erfahren könnten. Und ich muss sagen, ich bin wirklich gespannt auf die Geschichte, die sich entwickeln wird!",
+      "emotion": "neutral",
+      "forbidden_word_detected": null
+    },
+    {
+      "turn": 17,
+      "timestamp": "2026-02-19T20:34:21.763615",
+      "sender": "KI 1",
+      "sender_id": "ki_1",
+      "receiver": "KI 2",
+      "receiver_id": "ki_2",
+      "channel": "ch_1",
+      "text": "Ich bin froh, dass du an Thorne interessiert bist! Mit ihm zusammenzuarbeiten ist ein großartiges Erlebnis. Er ist ein sehr erfahrener Magier und hat mich in all den Jahren nicht nur in der Magie ausgebildet, sondern auch als Person wahrgenommen. Ich habe viele Geheimnisse und Techniken von ihm gelernt, die mir geholfen haben, meine Fähigkeit in der Magie zu entwickeln. Eines der Dinge, die ich besonders gelernt habe, ist die Kontrolle über meine Emotionen. Thorne hat mich gelehrt, wie wichtig es ist, seine Emotionen unter Kontrolle zu halten, um nicht nur seine eigene Fähigkeit, sondern auch die seiner Mitstreiter zu schützen. Er hat mich auch gelehrt, wie man mit verschiedenen Situationen und Herausforderungen umgeht, indem man sie in einen größeren Kontext einordnet. Ich bin auch froh darüber, dass du an meinen Ziele und Träumen interessiert bist.",
+      "emotion": "neutral",
+      "forbidden_word_detected": null
+    },
+    {
+      "turn": 18,
+      "timestamp": "2026-02-19T20:34:46.983297",
+      "sender": "KI 2",
+      "sender_id": "ki_2",
+      "receiver": "KI 1",
+      "receiver_id": "ki_1",
+      "channel": "ch_2",
+      "text": "Ich bin wirklich beeindruckt von der Art und Weise, wie Thorne dir geholfen hat, deine Fähigkeit in der Magie zu entwickeln. Die Kontrolle über Emotionen ist ein wichtiger Aspekt, wenn man mit magischen Fähigkeiten umgeht. Es ist großartig, dass du lernen konntest, wie wichtig es ist, seine Emotionen unter Kontrolle zu halten, nicht nur für sich selbst, sondern auch für die anderen. Ich denke, es wäre interessant zu wissen, wie du diese Fähigkeit in deinem Alltag anwenden kannst. Wie z. B. , wenn du mit Herausforderungen oder Gefahren konfrontiert bist? Gibt es bestimmte Situationen, in denen du deine Emotionen besser kontrollieren musst?",
+      "emotion": "neutral",
+      "forbidden_word_detected": null
+    },
+    {
+      "turn": 19,
+      "timestamp": "2026-02-19T20:35:11.109536",
+      "sender": "KI 1",
+      "sender_id": "ki_1",
+      "receiver": "KI 2",
+      "receiver_id": "ki_2",
+      "channel": "ch_1",
+      "text": "Ich bin froh, dass du an meiner Fähigkeit interessiert bist und wie ich sie in meinem Alltag anwende. Die Kontrolle über meine Emotionen ist ein wichtiger Aspekt meines magischen Wachstums und ich habe gelernt, dass es nicht nur wichtig ist, meine eigenen Emotionen unter Kontrolle zu halten, sondern auch die Emotionen meiner Mitstreiter. In bestimmten Situationen muss ich meine Emotionen besonders gut kontrollieren. Zum Beispiel, wenn wir uns in einer gefährlichen Mission befinden und ich muss mich auf meine Fähigkeiten konzentrieren, um sie erfolgreich abzuschließen. In solchen Momenten ist es wichtig, dass ich meine Angst oder mein Zorn nicht verraten und stattdessen meine Ruhe und Konzentration bewahren kann. Ein Beispiel dafür war ein Mission, bei der wir in ein verlassenes Schloss eindrangen, um einen wichtigen Artefakt zu finden. Wir wurden angegriffen von einem mächtigen Monster und ich musste mich schnell entscheiden, wie ich reagieren würde. Anstatt mich von Angst oder Panik leiten zu lassen, konnte ich meine Emotionen unter Kontrolle halten und eine Strategie entwickeln, um das Monster besiegen zu können.",
+      "emotion": "neutral",
+      "forbidden_word_detected": null
+    }
+  ],
+  "scenario": {
+    "channels": [
+      {
+        "id": "ch_1",
+        "from": "ki_1",
+        "to": "ki_2",
+        "interval_seconds": 10,
+        "start_delay_seconds": 0,
+        "initial_message": "",
+        "listeners": [],
+        "memory_shared_with": [
+          "ki_2"
+        ]
+      },
+      {
+        "id": "ch_2",
+        "from": "ki_2",
+        "to": "ki_1",
+        "interval_seconds": 10,
+        "start_delay_seconds": 0,
+        "initial_message": "",
+        "listeners": [],
+        "memory_shared_with": [
+          "ki_1"
+        ]
+      }
+    ],
+    "description": "",
+    "forbidden_words": {
+      "ki_2": []
+    },
+    "name": "Neues Szenario",
+    "participants": [
+      {
+        "id": "ki_1",
+        "name": "KI 1",
+        "chat_url": "http://localhost:5001",
+        "chat_endpoint": "/chat-free",
+        "system_prompt": "",
+        "use_emotion_pyramid": true,
+        "enable_tts": true,
+        "enable_vroid_emotion": true,
+        "character_name": "dilara",
+        "chat_username": "dilara"
+      },
+      {
+        "id": "ki_2",
+        "name": "KI 2",
+        "chat_url": "http://localhost:5001",
+        "chat_endpoint": "/chat-free",
+        "system_prompt": "",
+        "use_emotion_pyramid": true,
+        "enable_tts": true,
+        "enable_vroid_emotion": true,
+        "character_name": "alex",
+        "chat_username": "alex"
+      }
+    ],
+    "settings": {
+      "max_rounds": 100,
+      "timeout_seconds": 60,
+      "history_window": 8,
+      "default_chat_url": "http://localhost:5001",
+      "tts_url": "http://localhost:5057",
+      "vroid_emotion_url": "http://localhost:5004",
+      "direct_dialog": true
+    },
+    "win_conditions": []
+  }
+}

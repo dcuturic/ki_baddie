@@ -1,0 +1,15 @@
+{
+  "server": {
+    "host": "0.0.0.0",
+    "port": 8050,
+    "debug": true
+  },
+  "default_chat_url": "http://localhost:5001",
+  "default_chat_endpoint": "/chat-free",
+  "default_timeout": 60,
+  "tts_url": "http://localhost:5057",
+  "vroid_emotion_url": "http://localhost:5004",
+  "manager_url": "http://localhost:8000",
+  "scenarios_dir": "scenarios",
+  "transcripts_dir": "transcripts"
+}

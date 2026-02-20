@@ -1,6 +1,6 @@
 {
-  "name": "stream",
-  "description": "stream",
+  "name": "fgfghfhg",
+  "description": "",
   "services": {
     "blend_to_vrm": {
       "enabled": true,
@@ -23,6 +23,10 @@
       "auto_start": false
     },
     "ollama": {
+      "enabled": true,
+      "auto_start": false
+    },
+    "szenario_maker": {
       "enabled": true,
       "auto_start": false
     },

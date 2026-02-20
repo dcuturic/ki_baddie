@@ -109,6 +109,9 @@ async function initializeInstanceConfig() {
     // Load audio devices for Simple mode dropdowns
     await loadAudioDevices();
 
+    // Load Ollama models for model dropdown
+    await loadOllamaModels();
+
     // Load audio conflict registry
     try {
         const preview = await apiCall('/api/instance/configs/preview', {

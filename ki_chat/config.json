@@ -45,7 +45,7 @@
   },
   "meta_banned": [],
   "ollama": {
-    "default_model": "deeliar-m4000-perf:latest",
+    "default_model": "llama3.1:8b-instruct-q4_K_M",
     "options": {
       "num_batch": 1024,
       "num_ctx": 2048,

@@ -664,6 +664,7 @@ async function openConfigPreviewModal() {
 
     try {
         await loadAudioDevices();
+        await loadOllamaModels();
         const preview = await apiCall('/api/instance/configs/preview', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -791,29 +792,33 @@ document.addEventListener('DOMContentLoaded', () => {
 
 async function updateInstanceStatuses() {
     try {
-        const statuses = await getServicesStatus();
-        
-        // Count running services per instance
-        document.querySelectorAll('.instance-selector-card').forEach(card => {
+        // Fetch status for EACH instance separately
+        const cards = document.querySelectorAll('.instance-selector-card');
+        for (const card of cards) {
             const activeBadge = card.querySelector('[id^="active-"]');
-            if (!activeBadge) return;
+            if (!activeBadge) continue;
             const instanceName = activeBadge.id.replace('active-', '');
             
-            // We need instance data to know which services belong to it
-            // For now show total running count
-            let runningCount = 0;
-            Object.values(statuses).forEach(s => {
-                if (s.status === 'running') runningCount++;
-            });
-            activeBadge.textContent = runningCount;
-            
-            // Update status indicator
-            const statusSpan = card.querySelector('.instance-status');
-            if (statusSpan) {
-                statusSpan.textContent = runningCount > 0 ? '🟢' : '⚪';
-                statusSpan.title = runningCount > 0 ? `${runningCount} Services laufen` : 'Gestoppt';
+            try {
+                const result = await apiCall(`/api/status/all?instance=${encodeURIComponent(instanceName)}`);
+                const statuses = result.services || {};
+                
+                let runningCount = 0;
+                Object.values(statuses).forEach(s => {
+                    if (s.status === 'running') runningCount++;
+                });
+                activeBadge.textContent = runningCount;
+                
+                // Update status indicator
+                const statusSpan = card.querySelector('.instance-status');
+                if (statusSpan) {
+                    statusSpan.textContent = runningCount > 0 ? '🟢' : '⚪';
+                    statusSpan.title = runningCount > 0 ? `${runningCount} Services laufen` : 'Gestoppt';
+                }
+            } catch (err) {
+                console.error(`Status update error for ${instanceName}:`, err);
             }
-        });
+        }
     } catch (error) {
         console.error('Status update error:', error);
     }

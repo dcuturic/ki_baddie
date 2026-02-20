@@ -1,0 +1,75 @@
+{
+  "experiment_id": "exp_f27f6d18a1a0",
+  "scenario_name": "neues_szenario",
+  "started_at": "2026-02-19T21:08:28.755957",
+  "finished_at": "2026-02-19T21:08:43.757720",
+  "status": "stopped",
+  "total_rounds": 0,
+  "win_result": null,
+  "messages": [],
+  "scenario": {
+    "channels": [
+      {
+        "id": "ch_1",
+        "from": "",
+        "to": "",
+        "interval_seconds": 10,
+        "start_delay_seconds": 0,
+        "initial_message": "",
+        "listeners": [],
+        "memory_shared_with": []
+      },
+      {
+        "id": "ch_2",
+        "from": "",
+        "to": "",
+        "interval_seconds": 10,
+        "start_delay_seconds": 0,
+        "initial_message": "",
+        "listeners": [],
+        "memory_shared_with": []
+      }
+    ],
+    "description": "",
+    "forbidden_words": {
+      "ki_2": []
+    },
+    "name": "Neues Szenario",
+    "participants": [
+      {
+        "id": "ki_1",
+        "name": "Dilara",
+        "chat_url": "http://localhost:5001",
+        "chat_endpoint": "/chat-free",
+        "system_prompt": "Ich bin Dilara und ich bin eine Frau und manchmal noch ein Mädchen.",
+        "use_emotion_pyramid": true,
+        "enable_tts": true,
+        "enable_vroid_emotion": true,
+        "character_name": "dilara",
+        "chat_username": "Dilara"
+      },
+      {
+        "id": "ki_2",
+        "name": "Deeliar",
+        "chat_url": "http://localhost:5001",
+        "chat_endpoint": "/chat-free",
+        "system_prompt": "Ich bin Deeliar und ich bin eine Mann und manchmal noch ein Junge.",
+        "use_emotion_pyramid": true,
+        "enable_tts": true,
+        "enable_vroid_emotion": true,
+        "character_name": "deeliar",
+        "chat_username": "Deeliar"
+      }
+    ],
+    "settings": {
+      "max_rounds": 100,
+      "timeout_seconds": 60,
+      "history_window": 8,
+      "default_chat_url": "http://localhost:5001",
+      "tts_url": "http://localhost:5057",
+      "vroid_emotion_url": "http://localhost:5004",
+      "direct_dialog": true
+    },
+    "win_conditions": []
+  }
+}

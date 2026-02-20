@@ -1,9 +1,25 @@
+import os
+import sys
+import io
 from dataclasses import dataclass
 from typing import Dict, Optional
 import threading
 import time
 import math
 import json
+
+# ===== Bulletproof Windows UTF-8 fix (ä, ö, ü, ß etc.) =====
+os.environ["PYTHONIOENCODING"] = "utf-8"
+os.environ["PYTHONUTF8"] = "1"
+try:
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+except Exception:
+    try:
+        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+        sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+    except Exception:
+        pass
 import os
 
 import requests as http_requests
@@ -254,6 +270,7 @@ class SmoothBlendController:
 # Flask App
 # ----------------------------
 app = Flask(__name__)
+app.json.ensure_ascii = False
 blend = SmoothBlendController(VSEE_HOST, VSEE_PORT, RESET_KEYS) if OSC_ENABLED else None
 
 

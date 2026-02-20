@@ -1,9 +1,23 @@
 import io
 import os
+import sys
 import json
 import wave
 import threading
 import time
+
+# ===== Bulletproof Windows UTF-8 fix (ä, ö, ü, ß etc.) =====
+os.environ["PYTHONIOENCODING"] = "utf-8"
+os.environ["PYTHONUTF8"] = "1"
+try:
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+except Exception:
+    try:
+        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+        sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+    except Exception:
+        pass
 import subprocess
 import random
 from datetime import datetime
@@ -83,6 +97,11 @@ EMOTION_WAVS = CONFIG.get("emotions", {
 })
 DEFAULT_EMOTION = CONFIG.get("default_emotion", "neutral")
 
+# ===== CUDA GPU Performance Optimierungen =====
+os.environ["CUDA_LAUNCH_BLOCKING"] = "0"         # Async CUDA
+os.environ["TORCH_CUDNN_V8_API_ENABLED"] = "1"   # cuDNN v8 optimiert
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"         # Nur RTX 5060 Ti nutzen (Quadro M4000 ignorieren)
+
 import torch
 
 _torch_load = torch.load
@@ -154,6 +173,18 @@ torch.backends.cudnn.benchmark = True
 torch.backends.cudnn.deterministic = False
 try:
     torch.use_deterministic_algorithms(False)
+except Exception:
+    pass
+
+# ===== Maximale GPU-Auslastung =====
+# TF32 Matmul: 8x schneller als FP32 auf Ampere/Ada/Blackwell GPUs
+torch.backends.cuda.matmul.allow_tf32 = True
+torch.backends.cudnn.allow_tf32 = True
+# Flash SDP (Scaled Dot Product Attention) — schnellste Attention
+try:
+    torch.backends.cuda.enable_flash_sdp(True)
+    torch.backends.cuda.enable_mem_efficient_sdp(True)
+    torch.backends.cuda.enable_math_sdp(False)  # Langsamen Fallback deaktivieren
 except Exception:
     pass
 
@@ -317,6 +348,7 @@ class FXStore:
 
 
 app = Flask(__name__)
+app.json.ensure_ascii = False
 osc_client = SimpleUDPClient(OSC_HOST, OSC_PORT) if OSC_ENABLED else None
 
 CLEAR_BEFORE_EACH = True
@@ -378,6 +410,7 @@ for _ao_name in ADDITIONAL_OUTPUTS:
         print(f"[Audio] WARNING: Additional output device not found: {_ao_name!r}", flush=True)
 
 AUDIO_LOCK = threading.Lock()
+TTS_SYNTH_LOCK = threading.Lock()  # Serialize GPU synthesis to prevent CUDA race conditions
 
 fx_store = FXStore(root_dir=FX_DIR)
 
@@ -907,20 +940,64 @@ tts_model = TTS(model_name=TTS_MODEL_NAME).to(TTS_DEVICE)
 
 try:
     _ = tts_model.tts(text="Warmup.", speaker_wav=EMOTION_WAVS[DEFAULT_EMOTION], language=LANGUAGE)
-except Exception:
-    pass
-try:
-    tts_model.model = torch.compile(tts_model.model, mode="max-autotune")
+    print("[XTTS] Warmup abgeschlossen ✅")
 except Exception as e:
-    print("torch.compile not available/failed:", e)
+    print(f"[XTTS] Warmup fehlgeschlagen: {e}")
+
+# torch.compile für maximale Kernel-Fusion
+try:
+    if hasattr(tts_model, 'synthesizer') and hasattr(tts_model.synthesizer, 'tts_model'):
+        tts_model.synthesizer.tts_model = torch.compile(
+            tts_model.synthesizer.tts_model, mode="max-autotune"
+        )
+    elif hasattr(tts_model, 'model'):
+        tts_model.model = torch.compile(tts_model.model, mode="max-autotune")
+    print("[XTTS] torch.compile (max-autotune) aktiviert ✅")
+except Exception as e:
+    print(f"torch.compile not available/failed: {e}")
+
+# 2. Warmup nach compile (triggert JIT-Kompilierung)
+if TTS_DEVICE.startswith("cuda"):
+    try:
+        _ = tts_model.tts(text="Hallo Welt.", speaker_wav=EMOTION_WAVS[DEFAULT_EMOTION], language=LANGUAGE)
+        print("[XTTS] Post-compile Warmup abgeschlossen ✅")
+    except Exception:
+        pass
 print("[FX] HAS_RUBBERBAND_PY:", HAS_RUBBERBAND_PY, "HAS_RUBBERBAND_CLI:", HAS_RUBBERBAND_CLI, "USING_RUBBERBAND:", HAS_RUBBERBAND)
 
 
-def synthesize_wav_f32(text: str, emotion: str, tuning: dict | None = None):
+def synthesize_wav_f32(text: str, emotion: str, tuning: dict | None = None, voice: str | None = None):
     emotion_key = resolve_emotion_key(emotion)
-    ref = EMOTION_WAVS.get(emotion_key, EMOTION_WAVS[DEFAULT_EMOTION])
 
-    wav = tts_model.tts(text=text, speaker_wav=ref, language=LANGUAGE)
+    # Voice override: use voices/<voice>.wav for ALL emotions when specified
+    if voice:
+        voice_path = f"voices/{voice}.wav"
+        if os.path.exists(voice_path):
+            ref = voice_path
+            print(f"[XTTS] Using voice override: {voice_path}", flush=True)
+        else:
+            print(f"[XTTS] Voice file not found: {voice_path}, falling back to emotion WAV", flush=True)
+            ref = EMOTION_WAVS.get(emotion_key, EMOTION_WAVS[DEFAULT_EMOTION])
+    else:
+        ref = EMOTION_WAVS.get(emotion_key, EMOTION_WAVS[DEFAULT_EMOTION])
+
+    with TTS_SYNTH_LOCK:
+        try:
+            wav = tts_model.tts(text=text, speaker_wav=ref, language=LANGUAGE)
+        except Exception as synth_err:
+            err_str = str(synth_err).lower()
+            if "cuda" in err_str or "device-side" in err_str or "assert" in err_str:
+                print(f"[XTTS] CUDA-Fehler erkannt, versuche Recovery: {synth_err}", flush=True)
+                try:
+                    torch.cuda.synchronize()
+                except Exception:
+                    pass
+                torch.cuda.empty_cache()
+                # Retry once after CUDA recovery
+                wav = tts_model.tts(text=text, speaker_wav=ref, language=LANGUAGE)
+                print("[XTTS] Recovery erfolgreich ✅", flush=True)
+            else:
+                raise
     wav_f32 = np.asarray(wav, dtype=np.float32)
     wav_f32 = np.clip(wav_f32, -1.0, 1.0)
 
@@ -1037,9 +1114,9 @@ def play_audio_blocking(wav_f32: np.ndarray, sr: int, emotion: str):
             pass
 
 
-def speak_task(text: str, save_wav: bool, play_audio: bool, wav_path: str | None, emotion: str, tuning: dict | None):
+def speak_task(text: str, save_wav: bool, play_audio: bool, wav_path: str | None, emotion: str, tuning: dict | None, voice: str | None = None):
     try:
-        wav_f32, sr, ch, used_emotion, ref, backend = synthesize_wav_f32(text, emotion, tuning=tuning)
+        wav_f32, sr, ch, used_emotion, ref, backend = synthesize_wav_f32(text, emotion, tuning=tuning, voice=voice)
 
         if save_wav:
             if not wav_path:
@@ -1126,6 +1203,15 @@ def fx_toggle():
 
 @app.post("/tts")
 def tts():
+    try:
+        return _tts_inner()
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        print(f"[TTS] UNHANDLED ERROR: {e!r}", flush=True)
+        return jsonify({"ok": False, "error": repr(e)}), 500
+
+def _tts_inner():
     payload = request.get_json(silent=True) or {}
     print(payload, flush=True)
 
@@ -1148,6 +1234,10 @@ def tts():
     if tuning is not None and not isinstance(tuning, dict):
         tuning = None
 
+    voice = payload.get("voice") or None
+    if voice:
+        voice = str(voice).strip().lower()
+
     text = coerce_text_to_string(text_raw)
     emotion = str(emotion).strip().lower()
 
@@ -1161,7 +1251,7 @@ def tts():
 
     if return_wav:
         try:
-            wav_f32, sr, ch, used_emotion, ref, backend = synthesize_wav_f32(text, emotion, tuning=tuning)
+            wav_f32, sr, ch, used_emotion, ref, backend = synthesize_wav_f32(text, emotion, tuning=tuning, voice=voice)
             pcm16 = float32_to_int16(wav_f32)
             wav_bytes = pcm16_to_wav_bytes(pcm16, sr, ch)
 
@@ -1184,7 +1274,7 @@ def tts():
 
     threading.Thread(
         target=speak_task,
-        args=(text, save_wav, play_audio, wav_path, emotion, tuning),
+        args=(text, save_wav, play_audio, wav_path, emotion, tuning, voice),
         daemon=True
     ).start()
 
